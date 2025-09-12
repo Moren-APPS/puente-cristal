@@ -132,6 +132,7 @@
         const bridgeRows = 8;
         let currentRow = 0;
         let gameActive = false;
+        let shatteredFragments = []; // MEJORA: Array para los fragmentos
 
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
@@ -146,7 +147,6 @@
             showMessage("Iniciando cámara...", false, 0);
 
             try {
-                // MEJORA: Usar getUserMedia para un control directo de la cámara
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment' } 
                 });
@@ -154,7 +154,7 @@
                 
                 const video = document.createElement('video');
                 video.srcObject = stream;
-                video.setAttribute('playsinline', ''); // Necesario para iOS
+                video.setAttribute('playsinline', '');
                 video.play();
                 arContainer.appendChild(video);
 
@@ -189,12 +189,18 @@
 
             setupBridge(scene);
             
-            // Posicionar el puente frente a la cámara
             camera.position.z = 2;
 
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
-            window.addEventListener('click', onMouseClick, false);
+            
+            // MEJORA: Añadir listener para touchstart para mayor compatibilidad
+            window.addEventListener('click', handleInteraction);
+            window.addEventListener('touchstart', (event) => {
+                // Prevenir que se dispare el evento de click también
+                event.preventDefault();
+                handleInteraction(event.touches[0]);
+            });
 
             animate();
             gameActive = true;
@@ -202,7 +208,9 @@
         
         function setupBridge(parent) {
             bridge.forEach(row => { row.forEach(square => parent.remove(square.mesh)); });
+            shatteredFragments.forEach(f => parent.remove(f.mesh));
             bridge = [];
+            shatteredFragments = [];
             currentRow = 0;
             
             const squareSize = 0.5;
@@ -222,7 +230,7 @@
                     const square = new THREE.Mesh(geometry, material);
                     square.position.z = -(i * (squareSize + gap));
                     square.position.x = (j * (squareSize + gap)) - (totalWidth / 2) + (squareSize / 2);
-                    square.position.y = -1; // Bajar un poco el puente
+                    square.position.y = -1;
                     row.push({ mesh: square, isSafe: (j === safeIndex), row: i });
                     parent.add(square);
                 }
@@ -230,7 +238,7 @@
             }
         }
 
-        function onMouseClick(event) {
+        function handleInteraction(event) {
             if (!gameActive) return;
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -243,27 +251,52 @@
 
                 if (squareData && squareData.row === currentRow) {
                     if (squareData.isSafe) {
+                        // MEJORA: Efecto más sólido para los cuadros buenos
                         clickedMesh.material.color.setHex(0x00ff00);
-                        clickedMesh.material.opacity = 0.8;
+                        clickedMesh.material.opacity = 0.9;
+                        clickedMesh.material.metalness = 0.5;
                         currentRow++;
                         if (currentRow >= bridgeRows) endGame(true);
                     } else {
-                        clickedMesh.material.color.setHex(0xff0000);
-                        clickedMesh.material.opacity = 0.8;
-                        let scale = 1;
-                        const breakInterval = setInterval(() => {
-                           scale -= 0.1;
-                           clickedMesh.scale.set(scale, scale, scale);
-                           if(scale <= 0) {
-                               clearInterval(breakInterval);
-                               clickedMesh.visible = false;
-                           }
-                        }, 20);
+                        // MEJORA: Llamar a la función de rotura de vidrio
+                        shatterSquare(clickedMesh);
                         endGame(false);
                     }
                 }
             }
         }
+
+        // MEJORA: Nueva función para el efecto de rotura
+        function shatterSquare(mesh) {
+            mesh.visible = false;
+            const numFragments = 16;
+            const fragmentMaterial = new THREE.MeshStandardMaterial({
+                color: mesh.material.color,
+                metalness: 0.1,
+                roughness: 0.5
+            });
+
+            for (let i = 0; i < numFragments; i++) {
+                const fragmentGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.1);
+                const fragment = new THREE.Mesh(fragmentGeometry, fragmentMaterial);
+
+                fragment.position.copy(mesh.position);
+
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.05, // Eje x
+                    (Math.random()) * 0.05,       // Eje y (hacia arriba)
+                    (Math.random() - 0.5) * 0.05  // Eje z
+                );
+                
+                shatteredFragments.push({
+                    mesh: fragment,
+                    velocity: velocity,
+                    lifetime: 100 // Duración en frames
+                });
+                scene.add(fragment);
+            }
+        }
+
 
         function endGame(isWin) {
             gameActive = false;
@@ -292,8 +325,26 @@
             message.style.display = 'none';
         }
 
+
+
         function animate() {
             requestAnimationFrame(animate);
+            
+            // MEJORA: Animar los fragmentos de vidrio
+            for (let i = shatteredFragments.length - 1; i >= 0; i--) {
+                const f = shatteredFragments[i];
+                f.mesh.position.add(f.velocity);
+                f.velocity.y -= 0.0005; // Gravedad
+                f.lifetime--;
+                
+                f.mesh.material.opacity = f.lifetime / 100;
+
+                if (f.lifetime <= 0) {
+                    scene.remove(f.mesh);
+                    shatteredFragments.splice(i, 1);
+                }
+            }
+
             renderer.render(scene, camera);
         }
 
