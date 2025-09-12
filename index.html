@@ -29,6 +29,7 @@
             z-index: 10;
             padding: 20px;
             box-sizing: border-box;
+            transition: opacity 0.5s ease;
         }
         .content {
             background-color: rgba(20, 20, 20, 0.8);
@@ -69,14 +70,16 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.7);
+            background-color: rgba(200, 0, 0, 0.8);
             color: white;
             padding: 10px 20px;
             border-radius: 10px;
             font-size: 1.2em;
             z-index: 5;
             display: none;
-            border: 1px solid #FF0096;
+            border: 1px solid #ff33ab;
+            max-width: 90%;
+            text-align: center;
         }
     </style>
 </head>
@@ -91,6 +94,20 @@
     <div id="message"></div>
 
     <script>
+        // Check for secure context (HTTPS)
+        if (window.location.protocol !== 'https:') {
+            document.body.innerHTML = `
+                <div id="overlay">
+                    <div class="content">
+                        <h1 style="color: #ff4d4d;">Error de Seguridad</h1>
+                        <p>La Realidad Aumentada requiere una conexión segura (HTTPS).</p>
+                        <p>Por favor, accede a esta página a través de tu enlace de GitHub Pages.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+
         let scene, camera, renderer, raycaster, mouse;
         let bridge = [];
         const bridgeRows = 8;
@@ -104,36 +121,38 @@
         startButton.addEventListener('click', init);
 
         function init() {
-            overlay.style.display = 'none';
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.style.display = 'none'; }, 500);
+            showMessage("Iniciando cámara...", false, 5000);
 
-            // --- Basic Three.js Setup ---
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             
-            // --- Lighting ---
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(5, 10, 7.5);
             scene.add(directionalLight);
 
-            // --- AR Setup ---
-            const arToolkitSource = new THREEx.ArToolkitSource({
-                sourceType: 'webcam',
-            });
+            const arToolkitSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
 
+            // MEJORA: Manejo de errores al iniciar la cámara.
             arToolkitSource.init(() => {
+                hideMessage();
                 setTimeout(() => {
                     arToolkitSource.onResizeElement();
                     arToolkitSource.copyElementSizeTo(renderer.domElement);
-                }, 2000)
+                }, 500);
+            }, (error) => {
+                console.error("AR.js error:", error);
+                showMessage("Error: No se pudo acceder a la cámara. Asegúrate de permitir el acceso.", true);
             });
 
             const arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: THREEx.ArToolkitContext.baseURL + '../data/data/camera_para.dat',
+                cameraParametersUrl: 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/camera_para.dat',
                 detectionMode: 'mono',
             });
 
@@ -145,13 +164,11 @@
             scene.add(markerRoot);
             let artoolkitMarker = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
                 type: 'pattern',
-                patternUrl: THREEx.ArToolkitContext.baseURL + '../data/data/patt.hiro',
+                patternUrl: 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/patt.hiro',
             });
             
-            // --- Game Setup ---
             setupBridge(markerRoot);
 
-            // --- Interaction ---
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
             window.addEventListener('click', onMouseClick, false);
@@ -161,9 +178,7 @@
         }
         
         function setupBridge(parent) {
-            bridge.forEach(row => {
-                row.forEach(square => parent.remove(square.mesh));
-            });
+            bridge.forEach(row => { row.forEach(square => parent.remove(square.mesh)); });
             bridge = [];
             currentRow = 0;
             
@@ -172,25 +187,18 @@
 
             for (let i = 0; i < bridgeRows; i++) {
                 const row = [];
-                const safeIndex = Math.round(Math.random()); // 0 for left, 1 for right
+                const safeIndex = Math.round(Math.random());
                 
                 for (let j = 0; j < 2; j++) {
                     const geometry = new THREE.BoxGeometry(squareSize, 0.05, squareSize);
                     const material = new THREE.MeshStandardMaterial({
-                        color: 0xffffff,
-                        transparent: true,
-                        opacity: 0.3,
-                        metalness: 0.1,
-                        roughness: 0.2
+                        color: 0xffffff, transparent: true, opacity: 0.3,
+                        metalness: 0.1, roughness: 0.2
                     });
                     const square = new THREE.Mesh(geometry, material);
-                    
                     square.position.z = -(i * (squareSize + gap)) - 1;
                     square.position.x = (j * (squareSize + gap)) - (squareSize / 2);
-                    
-                    const isSafe = (j === safeIndex);
-                    
-                    row.push({ mesh: square, isSafe: isSafe, row: i });
+                    row.push({ mesh: square, isSafe: (j === safeIndex), row: i });
                     parent.add(square);
                 }
                 bridge.push(row);
@@ -199,12 +207,9 @@
 
         function onMouseClick(event) {
             if (!gameActive) return;
-
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
             raycaster.setFromCamera(mouse, camera);
-
             const intersects = raycaster.intersectObjects(bridge.flat().map(s => s.mesh));
 
             if (intersects.length > 0) {
@@ -213,19 +218,13 @@
 
                 if (squareData && squareData.row === currentRow) {
                     if (squareData.isSafe) {
-                        // Safe square
                         clickedMesh.material.color.setHex(0x00ff00);
                         clickedMesh.material.opacity = 0.8;
                         currentRow++;
-                        if (currentRow >= bridgeRows) {
-                            endGame(true);
-                        }
+                        if (currentRow >= bridgeRows) endGame(true);
                     } else {
-                        // Unsafe square
                         clickedMesh.material.color.setHex(0xff0000);
                         clickedMesh.material.opacity = 0.8;
-                        
-                        // Animate breaking
                         let scale = 1;
                         const breakInterval = setInterval(() => {
                            scale -= 0.1;
@@ -235,7 +234,6 @@
                                clickedMesh.visible = false;
                            }
                         }, 20);
-
                         endGame(false);
                     }
                 }
@@ -244,14 +242,11 @@
 
         function endGame(isWin) {
             gameActive = false;
-            if (isWin) {
-                showMessage("¡Felicidades, has cruzado!");
-            } else {
-                showMessage("¡Juego Terminado! Has caído.");
-            }
+            showMessage(isWin ? "¡Felicidades, has cruzado!" : "¡Juego Terminado! Has caído.", !isWin);
             
             setTimeout(() => {
                 overlay.style.display = 'flex';
+                overlay.style.opacity = '1';
                 document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : '¡Juego Terminado!';
                 document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
                 startButton.textContent = 'Reiniciar Juego';
@@ -259,12 +254,18 @@
             }, 3000);
         }
 
-        function showMessage(text) {
+        // MEJORA: Función de mensajes más versátil.
+        function showMessage(text, isError = false, duration = 2500) {
             message.textContent = text;
+            message.style.backgroundColor = isError ? 'rgba(200, 0, 0, 0.8)' : 'rgba(0,0,0,0.7)';
             message.style.display = 'block';
-            setTimeout(() => {
-                message.style.display = 'none';
-            }, 2500);
+            if (duration !== 0) {
+                setTimeout(hideMessage, duration);
+            }
+        }
+
+        function hideMessage() {
+            message.style.display = 'none';
         }
 
         function animate() {
@@ -277,10 +278,13 @@
         }
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
         });
     </script>
 </body>
 </html>
+
