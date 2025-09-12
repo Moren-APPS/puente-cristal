@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR</title>
+    <title>Reto Dalgona AR (Vectorial)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -36,7 +36,6 @@
     
     <div id="game-ui" style="display:none;">
         <div class="game-container">
-            <!-- MEJORA: Enlaces de imagen corregidos y estables -->
             <img id="cookie-img" src="https://assets.codepen.io/13471/dalgona.png" alt="Dalgona Cookie">
             <canvas id="cookie-canvas"></canvas>
             <canvas id="drawing-canvas"></canvas>
@@ -68,43 +67,78 @@
         const timerElement = document.getElementById('timer');
         const overlay = document.getElementById('overlay');
         
-        // MEJORA: Enlaces de imagen corregidos y estables
-        const shapes = {
-            triangle: 'https://assets.codepen.io/13471/dalgona-triangle.png',
-            star: 'https://assets.codepen.io/13471/dalgona-star.png',
-            umbrella: 'https://assets.codepen.io/13471/dalgona-umbrella.png'
-        };
-
         function startGame(shape) {
             overlay.style.display = 'none';
             document.getElementById('game-ui').style.display = 'flex';
             crackImg.style.display = 'none';
             
-            const shapeImg = new Image();
-            shapeImg.crossOrigin = "Anonymous";
-            shapeImg.onload = () => {
-                const containerSize = cookieCanvas.offsetWidth;
-                cookieCanvas.width = containerSize;
-                cookieCanvas.height = containerSize;
-                drawingCanvas.width = containerSize;
-                drawingCanvas.height = containerSize;
+            const containerSize = cookieCanvas.offsetWidth;
+            cookieCanvas.width = containerSize;
+            cookieCanvas.height = containerSize;
+            drawingCanvas.width = containerSize;
+            drawingCanvas.height = containerSize;
 
-                cookieCtx.drawImage(shapeImg, 0, 0, containerSize, containerSize);
-                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                
-                timeLeft = 60;
-                timerElement.textContent = timeLeft;
-                gameActive = true;
-                timerInterval = setInterval(updateTimer, 1000);
-            };
-            shapeImg.src = shapes[shape];
+            cookieCtx.clearRect(0, 0, cookieCanvas.width, cookieCanvas.height);
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+
+            // ¡NUEVO! Dibuja la forma seleccionada en el canvas
+            drawShape(shape, cookieCtx, containerSize);
+            
+            timeLeft = 60;
+            timerElement.textContent = timeLeft;
+            gameActive = true;
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        // ¡NUEVO! Función para dibujar las formas vectorialmente
+        function drawShape(shape, ctx, size) {
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const radius = size * 0.35; // Radio para el tamaño de la figura
+
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // Color del trazo
+            ctx.lineWidth = 10; // Grosor del trazo
+            ctx.beginPath();
+
+            switch (shape) {
+                case 'triangle':
+                    // Dibuja un triángulo equilátero
+                    ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0));
+                    for (let i = 1; i <= 3; i++) {
+                        ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3));
+                    }
+                    break;
+                case 'star':
+                    // Dibuja una estrella de 5 puntas
+                    const innerRadius = radius / 2.5;
+                    ctx.moveTo(centerX, centerY - radius);
+                    for (let i = 0; i < 5; i++) {
+                        const angle = Math.PI / 2 + (i * 2 * Math.PI / 5);
+                        ctx.lineTo(centerX + Math.cos(angle - Math.PI / 5) * innerRadius, centerY - Math.sin(angle - Math.PI / 5) * innerRadius);
+                        ctx.lineTo(centerX + Math.cos(angle) * radius, centerY - Math.sin(angle) * radius);
+                    }
+                    ctx.closePath();
+                    break;
+                case 'umbrella':
+                    // Dibuja un paraguas
+                    const handleHeight = radius * 0.7;
+                    const handleBend = radius * 0.2;
+                    ctx.arc(centerX, centerY, radius, Math.PI, 0); // La cúpula
+                    ctx.lineTo(centerX + radius, centerY); // Línea derecha
+                    ctx.lineTo(centerX, centerY); // Al centro
+                    ctx.lineTo(centerX, centerY + handleHeight); // Mango
+                    ctx.arc(centerX - handleBend, centerY + handleHeight, handleBend, 0, Math.PI / 2, false); // Curva del mango
+                    break;
+            }
+            ctx.stroke();
         }
         
         scene.addEventListener('render-target-loaded', function () {
-            const renderer = scene.renderer;
-            
             function renderLoop() {
-                if (!gameActive) return;
+                if (!gameActive) {
+                    requestAnimationFrame(renderLoop);
+                    return;
+                }
                 
                 if (needleMarker.object3D.visible) {
                     const screenPos = getScreenPosition(needleMarker.object3D);
@@ -121,7 +155,6 @@
             }
             requestAnimationFrame(renderLoop);
         });
-        
         
         function getScreenPosition(object3D) {
             const vector = new THREE.Vector3();
@@ -148,12 +181,22 @@
             return pos.x > 0 && pos.x < drawingCanvas.width && pos.y > 0 && pos.y < drawingCanvas.height;
         }
 
-        let lastPos = null;
         function checkCut(x, y) {
             if (!gameActive) return;
             
-            const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
-            const isOnPath = pixelData[3] > 128; 
+            // Revisa 4 puntos alrededor del cursor para un área de detección más amplia
+            const offsets = [0, -3, 3, -6, 6];
+            let isOnPath = false;
+            for(const ox of offsets) {
+                for(const oy of offsets) {
+                    const pixelData = cookieCtx.getImageData(x + ox, y + oy, 1, 1).data;
+                    if (pixelData[3] > 128) { // Revisa si el píxel no es transparente
+                        isOnPath = true;
+                        break;
+                    }
+                }
+                if(isOnPath) break;
+            }
 
             if (!isOnPath) {
                 endGame(false);
@@ -204,4 +247,3 @@
     </script>
 </body>
 </html>
-
