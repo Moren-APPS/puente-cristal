@@ -36,10 +36,11 @@
     
     <div id="game-ui" style="display:none;">
         <div class="game-container">
-            <img id="cookie-img" src="https://i.ibb.co/hK7JvjY/dalgona.png" alt="Dalgona Cookie">
+            <!-- MEJORA: Enlaces de imagen corregidos y estables -->
+            <img id="cookie-img" src="https://assets.codepen.io/13471/dalgona.png" alt="Dalgona Cookie">
             <canvas id="cookie-canvas"></canvas>
             <canvas id="drawing-canvas"></canvas>
-            <img id="crack-img" src="https://i.ibb.co/bJCgTqP/crack.png" alt="Cracked Cookie">
+            <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
         </div>
         <div id="timer">60</div>
     </div>
@@ -67,10 +68,11 @@
         const timerElement = document.getElementById('timer');
         const overlay = document.getElementById('overlay');
         
+        // MEJORA: Enlaces de imagen corregidos y estables
         const shapes = {
-            triangle: 'https://i.ibb.co/V3x7b0M/triangle-shape.png',
-            star: 'https://i.ibb.co/f8y37G0/star-shape.png',
-            umbrella: 'https://i.ibb.co/Yp8W42P/umbrella-shape.png'
+            triangle: 'https://assets.codepen.io/13471/dalgona-triangle.png',
+            star: 'https://assets.codepen.io/13471/dalgona-star.png',
+            umbrella: 'https://assets.codepen.io/13471/dalgona-umbrella.png'
         };
 
         function startGame(shape) {
@@ -109,10 +111,10 @@
                     if (isWithinBounds(screenPos)) {
                         checkCut(screenPos.x, screenPos.y);
                     } else {
-                        isTracing = false; // Detener el trazado si el marcador sale del área
+                        isTracing = false;
                     }
                 } else {
-                    isTracing = false; // Detener el trazado si se pierde el marcador
+                    isTracing = false;
                 }
                 
                 requestAnimationFrame(renderLoop);
@@ -151,7 +153,7 @@
             if (!gameActive) return;
             
             const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
-            const isOnPath = pixelData[3] > 128; // Chequear la transparencia del pixel en la imagen de la forma
+            const isOnPath = pixelData[3] > 128; 
 
             if (!isOnPath) {
                 endGame(false);
