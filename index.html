@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Puente de Cristal AR</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #000;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .content {
+            background-color: rgba(20, 20, 20, 0.8);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(255, 0, 150, 0.5);
+            border: 1px solid rgba(255, 0, 150, 0.7);
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #FF0096;
+            text-shadow: 0 0 10px #FF0096;
+        }
+        p {
+            font-size: 1.2em;
+            margin-bottom: 25px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background-color: #FF0096;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px #FF0096;
+        }
+        button:hover {
+            transform: scale(1.05);
+            background-color: #ff33ab;
+        }
+        #message {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 1.2em;
+            z-index: 5;
+            display: none;
+            border: 1px solid #FF0096;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div class="content">
+            <h1>Puente de Cristal AR</h1>
+            <p>Apunta la cámara al suelo y toca los cuadros para cruzar. <br>¡Elige el camino correcto o caerás!</p>
+            <button id="startButton">Comenzar Juego</button>
+        </div>
+    </div>
+    <div id="message"></div>
+
+    <script>
+        let scene, camera, renderer, raycaster, mouse;
+        let bridge = [];
+        const bridgeRows = 8;
+        let currentRow = 0;
+        let gameActive = false;
+
+        const startButton = document.getElementById('startButton');
+        const overlay = document.getElementById('overlay');
+        const message = document.getElementById('message');
+
+        startButton.addEventListener('click', init);
+
+        function init() {
+            overlay.style.display = 'none';
+
+            // --- Basic Three.js Setup ---
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // --- Lighting ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // --- AR Setup ---
+            const arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+            });
+
+            arToolkitSource.init(() => {
+                setTimeout(() => {
+                    arToolkitSource.onResizeElement();
+                    arToolkitSource.copyElementSizeTo(renderer.domElement);
+                }, 2000)
+            });
+
+            const arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: THREEx.ArToolkitContext.baseURL + '../data/data/camera_para.dat',
+                detectionMode: 'mono',
+            });
+
+            arToolkitContext.init(() => {
+                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+            });
+
+            let markerRoot = new THREE.Group();
+            scene.add(markerRoot);
+            let artoolkitMarker = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+                type: 'pattern',
+                patternUrl: THREEx.ArToolkitContext.baseURL + '../data/data/patt.hiro',
+            });
+            
+            // --- Game Setup ---
+            setupBridge(markerRoot);
+
+            // --- Interaction ---
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            window.addEventListener('click', onMouseClick, false);
+
+            animate();
+            gameActive = true;
+        }
+        
+        function setupBridge(parent) {
+            bridge.forEach(row => {
+                row.forEach(square => parent.remove(square.mesh));
+            });
+            bridge = [];
+            currentRow = 0;
+            
+            const squareSize = 0.5;
+            const gap = 0.05;
+
+            for (let i = 0; i < bridgeRows; i++) {
+                const row = [];
+                const safeIndex = Math.round(Math.random()); // 0 for left, 1 for right
+                
+                for (let j = 0; j < 2; j++) {
+                    const geometry = new THREE.BoxGeometry(squareSize, 0.05, squareSize);
+                    const material = new THREE.MeshStandardMaterial({
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 0.3,
+                        metalness: 0.1,
+                        roughness: 0.2
+                    });
+                    const square = new THREE.Mesh(geometry, material);
+                    
+                    square.position.z = -(i * (squareSize + gap)) - 1;
+                    square.position.x = (j * (squareSize + gap)) - (squareSize / 2);
+                    
+                    const isSafe = (j === safeIndex);
+                    
+                    row.push({ mesh: square, isSafe: isSafe, row: i });
+                    parent.add(square);
+                }
+                bridge.push(row);
+            }
+        }
+
+        function onMouseClick(event) {
+            if (!gameActive) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(bridge.flat().map(s => s.mesh));
+
+            if (intersects.length > 0) {
+                const clickedMesh = intersects[0].object;
+                const squareData = bridge.flat().find(s => s.mesh === clickedMesh);
+
+                if (squareData && squareData.row === currentRow) {
+                    if (squareData.isSafe) {
+                        // Safe square
+                        clickedMesh.material.color.setHex(0x00ff00);
+                        clickedMesh.material.opacity = 0.8;
+                        currentRow++;
+                        if (currentRow >= bridgeRows) {
+                            endGame(true);
+                        }
+                    } else {
+                        // Unsafe square
+                        clickedMesh.material.color.setHex(0xff0000);
+                        clickedMesh.material.opacity = 0.8;
+                        
+                        // Animate breaking
+                        let scale = 1;
+                        const breakInterval = setInterval(() => {
+                           scale -= 0.1;
+                           clickedMesh.scale.set(scale, scale, scale);
+                           if(scale <= 0) {
+                               clearInterval(breakInterval);
+                               clickedMesh.visible = false;
+                           }
+                        }, 20);
+
+                        endGame(false);
+                    }
+                }
+            }
+        }
+
+        function endGame(isWin) {
+            gameActive = false;
+            if (isWin) {
+                showMessage("¡Felicidades, has cruzado!");
+            } else {
+                showMessage("¡Juego Terminado! Has caído.");
+            }
+            
+            setTimeout(() => {
+                overlay.style.display = 'flex';
+                document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : '¡Juego Terminado!';
+                document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
+                startButton.textContent = 'Reiniciar Juego';
+                startButton.onclick = () => window.location.reload();
+            }, 3000);
+        }
+
+        function showMessage(text) {
+            message.textContent = text;
+            message.style.display = 'block';
+            setTimeout(() => {
+                message.style.display = 'none';
+            }, 2500);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (arToolkitSource && arToolkitSource.ready) {
+                arToolkitContext.update(arToolkitSource.domElement);
+                scene.visible = camera.visible;
+            }
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
