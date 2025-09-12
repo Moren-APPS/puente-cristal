@@ -2,165 +2,204 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Puente de Cristal AR</title>
-    <meta name="description" content="Juego de Realidad Aumentada inspirado en El Juego del Calamar.">
+    <title>Reto Dalgona AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; font-family: sans-serif; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; transition: opacity 0.5s ease; }
-        .content { background-color: rgba(20, 20, 20, 0.8); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 0, 150, 0.5); border: 1px solid rgba(255, 0, 150, 0.7); }
-        h1 { font-size: 2.5em; margin-bottom: 10px; color: #FF0096; text-shadow: 0 0 10px #FF0096; }
-        p { font-size: 1.2em; margin-bottom: 25px; }
-        button { padding: 15px 30px; font-size: 1.2em; background-color: #FF0096; color: white; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; }
-        #message { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.2em; z-index: 5; display: none; border: 1px solid #FF0096; max-width: 90%; text-align: center; }
+        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; }
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); pointer-events: none; }
+        .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
+        #cookie-canvas, #drawing-canvas, #cookie-img, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #cookie-img, #crack-img { pointer-events: none; }
+        #crack-img { display: none; }
+        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 20; padding: 20px; box-sizing: border-box; }
+        .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); }
+        h1 { font-size: 2.5em; margin-bottom: 10px; color: #FFA500; text-shadow: 0 0 10px #FFA500; }
+        button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; margin: 5px; }
     </style>
 </head>
 <body style="margin: 0px; overflow: hidden;">
+
     <div id="overlay">
         <div class="content">
-            <h1>Puente de Cristal AR</h1>
-            <p id="instruction-text">Apunta la cámara al marcador que tengas en el suelo para empezar a jugar.</p>
-            <button id="startButton">Entendido</button>
+            <h1>Reto Dalgona AR</h1>
+            <p>Pega el marcador "Hiro" en la punta de un lápiz.<br>Elige una forma para empezar.</p>
+            <div id="shape-selector" style="margin-bottom: 20px;">
+                <button onclick="startGame('triangle')">Triángulo</button>
+                <button onclick="startGame('star')">Estrella</button>
+                <button onclick="startGame('umbrella')">Paraguas</button>
+            </div>
         </div>
     </div>
-    <div id="message"></div>
+    
+    <div id="game-ui" style="display:none;">
+        <div class="game-container">
+            <img id="cookie-img" src="https://i.ibb.co/hK7JvjY/dalgona.png" alt="Dalgona Cookie">
+            <canvas id="cookie-canvas"></canvas>
+            <canvas id="drawing-canvas"></canvas>
+            <img id="crack-img" src="https://i.ibb.co/bJCgTqP/crack.png" alt="Cracked Cookie">
+        </div>
+        <div id="timer">60</div>
+    </div>
 
-    <!-- 
-        MEJORA: 
-        1. Se usa `type: pattern` para cargar un marcador personalizado.
-        2. `url: 'marcador.patt'` le dice al juego que busque el archivo de patrón.
-    -->
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
-        
-        <!-- El 'patt' es el archivo de patrón que corresponde a tu imagen JPG/PNG -->
-        <a-marker type="pattern" url="https://raw.githack.com/moren-apps/puente-cristal/main/marcador.patt" id="marker">
-            <!-- El puente se generará aquí -->
+    <a-scene embedded arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" vr-mode-ui="enabled: false">
+        <a-marker preset="hiro" id="needle-marker">
+            <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver; metalness: 0.8;"></a-cone>
         </a-marker>
-        
-        <a-entity camera cursor="rayOrigin: mouse"></a-entity>
-
-        <script>
-            const startButton = document.getElementById('startButton');
-            const overlay = document.getElementById('overlay');
-            const marker = document.getElementById('marker');
-            
-            let gameActive = false;
-            let currentRow = 0;
-            const bridgeRows = 8;
-
-            startButton.addEventListener('click', () => {
-                overlay.style.opacity = '0';
-                setTimeout(() => { overlay.style.display = 'none'; }, 500);
-            });
-
-            function createBridge() {
-                while (marker.firstChild) {
-                    marker.removeChild(marker.firstChild);
-                }
-                currentRow = 0;
-
-                const squareSize = 1;
-                const gap = 0.1;
-
-                for (let i = 0; i < bridgeRows; i++) {
-                    const safeIndex = Math.round(Math.random());
-                    for (let j = 0; j < 2; j++) {
-                        const square = document.createElement('a-box');
-                        square.setAttribute('position', {
-                            x: (j * (squareSize + gap)) - (squareSize / 2 + gap / 2),
-                            y: 0,
-                            z: -(i * (squareSize + gap)) - 1
-                        });
-                        square.setAttribute('width', squareSize);
-                        square.setAttribute('height', 0.1);
-                        square.setAttribute('depth', squareSize);
-                        square.setAttribute('material', 'color: white; transparent: true; opacity: 0.4');
-                        
-                        square.dataset.row = i;
-                        square.dataset.isSafe = (j === safeIndex);
-
-                        square.addEventListener('click', handleInteraction);
-                        
-                        marker.appendChild(square);
-                    }
-                }
-            }
-
-            function handleInteraction(event) {
-                if (!gameActive) return;
-                const clickedSquare = event.target;
-                const row = parseInt(clickedSquare.dataset.row);
-                const isSafe = clickedSquare.dataset.isSafe === 'true';
-
-                if (row === currentRow) {
-                    if (clickedSquare.getAttribute('data-clicked')) return;
-                    clickedSquare.setAttribute('data-clicked', 'true');
-
-                    if (isSafe) {
-                        clickedSquare.setAttribute('material', 'color', 'lime');
-                        clickedSquare.setAttribute('material', 'opacity', '0.9');
-                        currentRow++;
-                        if (currentRow >= bridgeRows) endGame(true);
-                    } else {
-                        clickedSquare.setAttribute('animation', {
-                            property: 'position',
-                            to: { x: clickedSquare.object3D.position.x, y: -5, z: clickedSquare.object3D.position.z },
-                            dur: 1500,
-                            easing: 'easeInQuad'
-                        });
-                        clickedSquare.setAttribute('animation__fade', {
-                            property: 'material.opacity',
-                            to: 0,
-                            dur: 1500
-                        });
-                        endGame(false);
-                    }
-                }
-            }
-            
-            function resetGame() {
-                overlay.style.opacity = '0';
-                setTimeout(() => { overlay.style.display = 'none'; }, 500);
-                createBridge();
-                gameActive = true;
-            }
-
-            function endGame(isWin) {
-                gameActive = false;
-                showMessage(isWin ? "¡Felicidades, has cruzado!" : "¡Juego Terminado! Has caído.");
-                setTimeout(() => {
-                    overlay.style.display = 'flex';
-                    overlay.style.opacity = '1';
-                    document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : 'Juego Terminado';
-                    document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
-                    startButton.textContent = 'Reiniciar Juego';
-                    startButton.onclick = resetGame;
-                }, 3000);
-            }
-
-            function showMessage(text) {
-                const msgEl = document.getElementById('message');
-                msgEl.textContent = text;
-                msgEl.style.display = 'block';
-                setTimeout(() => { msgEl.style.display = 'none'; }, 2500);
-            }
-
-            marker.addEventListener('markerFound', () => {
-                if (!gameActive) {
-                    showMessage("¡Marcador detectado! ¡Juego iniciado!");
-                    createBridge();
-                    gameActive = true;
-                }
-            });
-
-             marker.addEventListener('markerLost', () => {
-                if(gameActive){
-                    showMessage("Se perdió el marcador...");
-                }
-            });
-        </script>
+        <a-entity camera></a-entity>
     </a-scene>
+
+    <script>
+        let gameActive = false;
+        let timerInterval;
+        let timeLeft = 60;
+        let isTracing = false;
+        
+        const cookieCanvas = document.getElementById('cookie-canvas');
+        const drawingCanvas = document.getElementById('drawing-canvas');
+        const cookieCtx = cookieCanvas.getContext('2d');
+        const drawingCtx = drawingCanvas.getContext('2d');
+        const needleMarker = document.getElementById('needle-marker');
+        const scene = document.querySelector('a-scene');
+        const crackImg = document.getElementById('crack-img');
+        const timerElement = document.getElementById('timer');
+        const overlay = document.getElementById('overlay');
+        
+        const shapes = {
+            triangle: 'https://i.ibb.co/V3x7b0M/triangle-shape.png',
+            star: 'https://i.ibb.co/f8y37G0/star-shape.png',
+            umbrella: 'https://i.ibb.co/Yp8W42P/umbrella-shape.png'
+        };
+
+        function startGame(shape) {
+            overlay.style.display = 'none';
+            document.getElementById('game-ui').style.display = 'flex';
+            crackImg.style.display = 'none';
+            
+            const shapeImg = new Image();
+            shapeImg.crossOrigin = "Anonymous";
+            shapeImg.onload = () => {
+                const containerSize = cookieCanvas.offsetWidth;
+                cookieCanvas.width = containerSize;
+                cookieCanvas.height = containerSize;
+                drawingCanvas.width = containerSize;
+                drawingCanvas.height = containerSize;
+
+                cookieCtx.drawImage(shapeImg, 0, 0, containerSize, containerSize);
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                
+                timeLeft = 60;
+                timerElement.textContent = timeLeft;
+                gameActive = true;
+                timerInterval = setInterval(updateTimer, 1000);
+            };
+            shapeImg.src = shapes[shape];
+        }
+        
+        scene.addEventListener('render-target-loaded', function () {
+            const renderer = scene.renderer;
+            
+            function renderLoop() {
+                if (!gameActive) return;
+                
+                if (needleMarker.object3D.visible) {
+                    const screenPos = getScreenPosition(needleMarker.object3D);
+                    if (isWithinBounds(screenPos)) {
+                        checkCut(screenPos.x, screenPos.y);
+                    } else {
+                        isTracing = false; // Detener el trazado si el marcador sale del área
+                    }
+                } else {
+                    isTracing = false; // Detener el trazado si se pierde el marcador
+                }
+                
+                requestAnimationFrame(renderLoop);
+            }
+            requestAnimationFrame(renderLoop);
+        });
+        
+        
+        function getScreenPosition(object3D) {
+            const vector = new THREE.Vector3();
+            const renderer = scene.renderer;
+            const widthHalf = 0.5 * renderer.domElement.offsetWidth;
+            const heightHalf = 0.5 * renderer.domElement.offsetHeight;
+            
+            object3D.updateMatrixWorld();
+            vector.setFromMatrixPosition(object3D.matrixWorld);
+            
+            const camera = scene.camera;
+            vector.project(camera);
+            
+            const gameContainer = document.querySelector('.game-container');
+            const rect = gameContainer.getBoundingClientRect();
+
+            const x = (vector.x * widthHalf + widthHalf) - rect.left;
+            const y = -(vector.y * heightHalf) + heightHalf - rect.top;
+            
+            return { x, y };
+        }
+
+        function isWithinBounds(pos) {
+            return pos.x > 0 && pos.x < drawingCanvas.width && pos.y > 0 && pos.y < drawingCanvas.height;
+        }
+
+        let lastPos = null;
+        function checkCut(x, y) {
+            if (!gameActive) return;
+            
+            const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
+            const isOnPath = pixelData[3] > 128; // Chequear la transparencia del pixel en la imagen de la forma
+
+            if (!isOnPath) {
+                endGame(false);
+            } else {
+                if(!isTracing) {
+                    drawingCtx.beginPath();
+                    drawingCtx.moveTo(x, y);
+                    isTracing = true;
+                } else {
+                    drawingCtx.lineTo(x, y);
+                    drawingCtx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
+                    drawingCtx.lineWidth = 15;
+                    drawingCtx.lineCap = 'round';
+                    drawingCtx.stroke();
+                }
+            }
+        }
+        
+        function updateTimer() {
+            timeLeft--;
+            timerElement.textContent = timeLeft;
+            if (timeLeft <= 0) {
+                endGame(false); 
+            }
+        }
+
+        function endGame(isWin) {
+            if (!gameActive) return;
+            
+            gameActive = false;
+            clearInterval(timerInterval);
+            
+            const h1 = overlay.querySelector('h1');
+            const p = overlay.querySelector('p');
+
+            if (isWin) {
+                h1.textContent = "¡Felicidades!";
+                p.textContent = "Has cortado la galleta a la perfección.";
+            } else {
+                crackImg.style.display = 'block';
+                h1.textContent = "¡Has Perdido!";
+                p.textContent = "La galleta se ha roto.";
+            }
+            
+            overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
+            overlay.style.display = 'flex';
+        }
+    </script>
 </body>
 </html>
 
