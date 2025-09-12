@@ -8,11 +8,10 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; }
-        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); pointer-events: none; }
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; /* Eliminado fondo oscuro para ver la cámara */ pointer-events: none; }
         .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
-        #cookie-canvas, #drawing-canvas, #cookie-img, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #cookie-img, #crack-img { pointer-events: none; }
-        #crack-img { display: none; }
+        #cookie-canvas, #drawing-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #crack-img { pointer-events: none; display: none; }
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 20; padding: 20px; box-sizing: border-box; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); }
@@ -36,7 +35,6 @@
     
     <div id="game-ui" style="display:none;">
         <div class="game-container">
-            <img id="cookie-img" src="https://assets.codepen.io/13471/dalgona.png" alt="Dalgona Cookie">
             <canvas id="cookie-canvas"></canvas>
             <canvas id="drawing-canvas"></canvas>
             <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
@@ -80,8 +78,7 @@
 
             cookieCtx.clearRect(0, 0, cookieCanvas.width, cookieCanvas.height);
             drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-
-            // ¡NUEVO! Dibuja la forma seleccionada en el canvas
+            
             drawShape(shape, cookieCtx, containerSize);
             
             timeLeft = 60;
@@ -90,26 +87,26 @@
             timerInterval = setInterval(updateTimer, 1000);
         }
 
-        // ¡NUEVO! Función para dibujar las formas vectorialmente
         function drawShape(shape, ctx, size) {
             const centerX = size / 2;
             const centerY = size / 2;
-            const radius = size * 0.35; // Radio para el tamaño de la figura
+            const radius = size * 0.35;
 
-            ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // Color del trazo
-            ctx.lineWidth = 10; // Grosor del trazo
+            // ▼▼▼ LÍNEAS MODIFICADAS ▼▼▼
+            ctx.strokeStyle = "rgba(255, 199, 102, 0.8)"; // Un color más parecido a la galleta
+            ctx.lineWidth = 15; // Línea más gruesa para que sea más fácil seguirla
+            // ▲▲▲ FIN DE MODIFICACIÓN ▲▲▲
+            
             ctx.beginPath();
 
             switch (shape) {
                 case 'triangle':
-                    // Dibuja un triángulo equilátero
                     ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0));
                     for (let i = 1; i <= 3; i++) {
                         ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3));
                     }
                     break;
                 case 'star':
-                    // Dibuja una estrella de 5 puntas
                     const innerRadius = radius / 2.5;
                     ctx.moveTo(centerX, centerY - radius);
                     for (let i = 0; i < 5; i++) {
@@ -120,14 +117,13 @@
                     ctx.closePath();
                     break;
                 case 'umbrella':
-                    // Dibuja un paraguas
                     const handleHeight = radius * 0.7;
                     const handleBend = radius * 0.2;
-                    ctx.arc(centerX, centerY, radius, Math.PI, 0); // La cúpula
-                    ctx.lineTo(centerX + radius, centerY); // Línea derecha
-                    ctx.lineTo(centerX, centerY); // Al centro
-                    ctx.lineTo(centerX, centerY + handleHeight); // Mango
-                    ctx.arc(centerX - handleBend, centerY + handleHeight, handleBend, 0, Math.PI / 2, false); // Curva del mango
+                    ctx.arc(centerX, centerY, radius, Math.PI, 0);
+                    ctx.lineTo(centerX + radius, centerY);
+                    ctx.lineTo(centerX, centerY);
+                    ctx.lineTo(centerX, centerY + handleHeight);
+                    ctx.arc(centerX - handleBend, centerY + handleHeight, handleBend, 0, Math.PI / 2, false);
                     break;
             }
             ctx.stroke();
@@ -184,19 +180,8 @@
         function checkCut(x, y) {
             if (!gameActive) return;
             
-            // Revisa 4 puntos alrededor del cursor para un área de detección más amplia
-            const offsets = [0, -3, 3, -6, 6];
-            let isOnPath = false;
-            for(const ox of offsets) {
-                for(const oy of offsets) {
-                    const pixelData = cookieCtx.getImageData(x + ox, y + oy, 1, 1).data;
-                    if (pixelData[3] > 128) { // Revisa si el píxel no es transparente
-                        isOnPath = true;
-                        break;
-                    }
-                }
-                if(isOnPath) break;
-            }
+            const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
+            const isOnPath = pixelData[3] > 128; 
 
             if (!isOnPath) {
                 endGame(false);
@@ -234,11 +219,11 @@
 
             if (isWin) {
                 h1.textContent = "¡Felicidades!";
-                p.textContent = "Has cortado la galleta a la perfección.";
+                p.textContent = "Has cortado la forma a la perfección.";
             } else {
                 crackImg.style.display = 'block';
                 h1.textContent = "¡Has Perdido!";
-                p.textContent = "La galleta se ha roto.";
+                p.textContent = "Te has salido de la línea.";
             }
             
             overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
