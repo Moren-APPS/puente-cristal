@@ -5,13 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Puente de Cristal AR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
         body { 
             margin: 0; 
             overflow: hidden; 
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             background-color: #000;
+        }
+        #ar-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
         }
         #overlay {
             position: absolute;
@@ -61,10 +84,6 @@
             transition: all 0.3s ease;
             box-shadow: 0 0 15px #FF0096;
         }
-        button:hover {
-            transform: scale(1.05);
-            background-color: #ff33ab;
-        }
         #message {
             position: absolute;
             bottom: 20px;
@@ -87,11 +106,12 @@
     <div id="overlay">
         <div class="content">
             <h1>Puente de Cristal AR</h1>
-            <p>Apunta la cámara al suelo y toca los cuadros para cruzar. <br>¡Elige el camino correcto o caerás!</p>
+            <p>El juego aparecerá flotando frente a ti.<br>¡Toca los cuadros para cruzar!</p>
             <button id="startButton">Comenzar Juego</button>
         </div>
     </div>
     <div id="message"></div>
+    <div id="ar-container"></div>
 
     <script>
         // Check for secure context (HTTPS)
@@ -107,7 +127,6 @@
             `;
         }
 
-
         let scene, camera, renderer, raycaster, mouse;
         let bridge = [];
         const bridgeRows = 8;
@@ -117,57 +136,61 @@
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
         const message = document.getElementById('message');
+        const arContainer = document.getElementById('ar-container');
 
         startButton.addEventListener('click', init);
 
-        function init() {
+        async function init() {
             overlay.style.opacity = '0';
             setTimeout(() => { overlay.style.display = 'none'; }, 500);
-            showMessage("Iniciando cámara...", false, 5000);
+            showMessage("Iniciando cámara...", false, 0);
 
+            try {
+                // MEJORA: Usar getUserMedia para un control directo de la cámara
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                hideMessage();
+                
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.setAttribute('playsinline', ''); // Necesario para iOS
+                video.play();
+                arContainer.appendChild(video);
+
+                setupThreeJS(video);
+                
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                let errorMessage = "Error: No se pudo acceder a la cámara.";
+                if (err.name === "NotAllowedError") {
+                    errorMessage += " Por favor, permite el acceso a la cámara en los permisos de tu navegador.";
+                } else if (err.name === "NotFoundError") {
+                    errorMessage += " No se encontró una cámara trasera en tu dispositivo.";
+                }
+                showMessage(errorMessage, true);
+                overlay.style.opacity = '1';
+                overlay.style.display = 'flex';
+            }
+        }
+
+        function setupThreeJS(videoElement) {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ alpha: true });
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+            arContainer.appendChild(renderer.domElement);
             
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
             directionalLight.position.set(5, 10, 7.5);
             scene.add(directionalLight);
 
-            const arToolkitSource = new THREEx.ArToolkitSource({ sourceType: 'webcam' });
-
-            // MEJORA: Manejo de errores al iniciar la cámara.
-            arToolkitSource.init(() => {
-                hideMessage();
-                setTimeout(() => {
-                    arToolkitSource.onResizeElement();
-                    arToolkitSource.copyElementSizeTo(renderer.domElement);
-                }, 500);
-            }, (error) => {
-                console.error("AR.js error:", error);
-                showMessage("Error: No se pudo acceder a la cámara. Asegúrate de permitir el acceso.", true);
-            });
-
-            const arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/camera_para.dat',
-                detectionMode: 'mono',
-            });
-
-            arToolkitContext.init(() => {
-                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-            });
-
-            let markerRoot = new THREE.Group();
-            scene.add(markerRoot);
-            let artoolkitMarker = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
-                type: 'pattern',
-                patternUrl: 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/examples/image-tracking/nft/trex/patt.hiro',
-            });
+            setupBridge(scene);
             
-            setupBridge(markerRoot);
+            // Posicionar el puente frente a la cámara
+            camera.position.z = 2;
 
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
@@ -183,7 +206,8 @@
             currentRow = 0;
             
             const squareSize = 0.5;
-            const gap = 0.05;
+            const gap = 0.1;
+            const totalWidth = (squareSize * 2) + gap;
 
             for (let i = 0; i < bridgeRows; i++) {
                 const row = [];
@@ -192,12 +216,13 @@
                 for (let j = 0; j < 2; j++) {
                     const geometry = new THREE.BoxGeometry(squareSize, 0.05, squareSize);
                     const material = new THREE.MeshStandardMaterial({
-                        color: 0xffffff, transparent: true, opacity: 0.3,
+                        color: 0xffffff, transparent: true, opacity: 0.4,
                         metalness: 0.1, roughness: 0.2
                     });
                     const square = new THREE.Mesh(geometry, material);
-                    square.position.z = -(i * (squareSize + gap)) - 1;
-                    square.position.x = (j * (squareSize + gap)) - (squareSize / 2);
+                    square.position.z = -(i * (squareSize + gap));
+                    square.position.x = (j * (squareSize + gap)) - (totalWidth / 2) + (squareSize / 2);
+                    square.position.y = -1; // Bajar un poco el puente
                     row.push({ mesh: square, isSafe: (j === safeIndex), row: i });
                     parent.add(square);
                 }
@@ -254,10 +279,9 @@
             }, 3000);
         }
 
-        // MEJORA: Función de mensajes más versátil.
         function showMessage(text, isError = false, duration = 2500) {
             message.textContent = text;
-            message.style.backgroundColor = isError ? 'rgba(200, 0, 0, 0.8)' : 'rgba(0,0,0,0.7)';
+            message.style.backgroundColor = isError ? 'rgba(200, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.7)';
             message.style.display = 'block';
             if (duration !== 0) {
                 setTimeout(hideMessage, duration);
@@ -270,10 +294,6 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            if (arToolkitSource && arToolkitSource.ready) {
-                arToolkitContext.update(arToolkitSource.domElement);
-                scene.visible = camera.visible;
-            }
             renderer.render(scene, camera);
         }
 
