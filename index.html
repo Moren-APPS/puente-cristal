@@ -1,102 +1,51 @@
 <!DOCTYPE html>
-<html lang="es">
-<head>
+<html>
+  <head>
     <meta charset="utf-8">
-    <title>Prueba de Calibración WebXR</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Prueba de AR de la Comunidad</title>
+    <meta name="description" content="Una prueba simple de AR con A-Frame y AR.js">
+    <!-- Carga de las librerías A-Frame y AR.js -->
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; }
-        #ARButton {
+        body { margin: 0; font-family: sans-serif; }
+        #instructions {
             position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border: 1px solid #fff;
-            border-radius: 4px;
-            background: rgba(0,0,0,0.4);
-            color: #fff;
-            font: 16px sans-serif;
-            z-index: 100;
-            cursor: pointer;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 10;
         }
     </style>
-</head>
-<body>
+  </head>
+  <body style="margin : 0px; overflow: hidden;">
+    <div id="instructions">
+        Apunta la cámara de tu celular a la imagen del marcador "Hiro".
+    </div>
     <!-- 
-        Este es un mapa de importación. Es una forma moderna y robusta
-        de decirle al navegador dónde encontrar las librerías de Three.js.
-        Es el método recomendado oficialmente.
+      Esta es la escena de A-Frame. 'embedded' y 'arjs' son los
+      componentes que activan la cámara y la Realidad Aumentada.
     -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/"
-            }
-        }
-    </script>
-
-    <script type="module">
-        // Importamos los componentes necesarios de Three.js
-        import * as THREE from 'three';
-        import { ARButton } from 'three/addons/webxr/ARButton.js';
-
-        let camera, scene, renderer;
-        let cube;
-
-        // 1. Iniciar la escena
-        init();
-
-        function init() {
-            // Crear la escena y la cámara
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-
-            // Crear el motor de renderizado
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true; // Activar la Realidad Aumentada
-            document.body.appendChild(renderer.domElement);
-
-            // Crear y añadir el botón de AR oficial
-            const arButton = ARButton.createButton(renderer);
-            document.body.appendChild(arButton);
-
-            // Añadir luz a la escena
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-            light.position.set(0.5, 1, 0.25);
-            scene.add(light);
-
-            // Crear un simple cubo rosa
-            const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-            const material = new THREE.MeshStandardMaterial({ color: 0xFF0096 });
-            cube = new THREE.Mesh(geometry, material);
-            
-            // Colocar el cubo un poco en frente de la cámara al inicio
-            cube.position.set(0, 0, -0.5);
-            scene.add(cube);
-
-            // Iniciar el bucle de animación
-            renderer.setAnimationLoop(render);
-        }
-
-        function render() {
-            // Rotar el cubo en cada frame para que se vea que está vivo
-            if (cube) {
-                cube.rotation.y += 0.01;
-            }
-            renderer.render(scene, camera);
-        }
-
-        // Ajustar la vista si la ventana cambia de tamaño
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-    </script>
-</body>
+    <a-scene embedded arjs>
+      <!-- 
+        Este es el marcador. Le decimos que busque un patrón específico
+        (el patrón "Hiro", que es el estándar para pruebas).
+      -->
+      <a-marker preset="hiro">
+          <!-- 
+            Este es el objeto que aparecerá cuando se detecte el marcador.
+            Es un simple cubo negro, posicionado justo encima del marcador.
+          -->
+          <a-box position="0 0.5 0" material="color: black;"></a-box>
+      </a-marker>
+      <!-- Esta es la cámara de la escena -->
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
 </html>
 
