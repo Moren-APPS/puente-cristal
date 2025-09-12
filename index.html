@@ -20,26 +20,29 @@
     <div id="overlay">
         <div class="content">
             <h1>Puente de Cristal AR</h1>
-            <p id="instruction-text">Apunta la cámara al marcador "Hiro" que tengas en el suelo para empezar a jugar.</p>
+            <p id="instruction-text">Apunta la cámara al marcador que tengas en el suelo para empezar a jugar.</p>
             <button id="startButton">Entendido</button>
         </div>
     </div>
     <div id="message"></div>
 
-    <!-- MEJORA: Se simplifica la escena y se añade el cursor a la cámara para arreglar la interacción -->
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" id="scene">
+    <!-- 
+        MEJORA: 
+        1. Se usa `type: pattern` para cargar un marcador personalizado.
+        2. `url: 'marcador.patt'` le dice al juego que busque el archivo de patrón.
+    -->
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
         
-        <a-marker preset="hiro" id="marker">
+        <!-- El 'patt' es el archivo de patrón que corresponde a tu imagen JPG/PNG -->
+        <a-marker type="pattern" url="https://raw.githack.com/moren-apps/puente-cristal/main/marcador.patt" id="marker">
             <!-- El puente se generará aquí -->
         </a-marker>
         
-        <!-- El cursor es la clave para que los clics funcionen de forma fiable -->
         <a-entity camera cursor="rayOrigin: mouse"></a-entity>
 
         <script>
             const startButton = document.getElementById('startButton');
             const overlay = document.getElementById('overlay');
-            const sceneEl = document.getElementById('scene');
             const marker = document.getElementById('marker');
             
             let gameActive = false;
@@ -52,7 +55,6 @@
             });
 
             function createBridge() {
-                // Limpiar el puente anterior
                 while (marker.firstChild) {
                     marker.removeChild(marker.firstChild);
                 }
@@ -87,13 +89,11 @@
 
             function handleInteraction(event) {
                 if (!gameActive) return;
-
                 const clickedSquare = event.target;
                 const row = parseInt(clickedSquare.dataset.row);
                 const isSafe = clickedSquare.dataset.isSafe === 'true';
 
                 if (row === currentRow) {
-                    // Prevenir doble clic en el mismo cuadro
                     if (clickedSquare.getAttribute('data-clicked')) return;
                     clickedSquare.setAttribute('data-clicked', 'true');
 
@@ -103,7 +103,6 @@
                         currentRow++;
                         if (currentRow >= bridgeRows) endGame(true);
                     } else {
-                        // Animación de caída (romperse)
                         clickedSquare.setAttribute('animation', {
                             property: 'position',
                             to: { x: clickedSquare.object3D.position.x, y: -5, z: clickedSquare.object3D.position.z },
@@ -148,7 +147,7 @@
             }
 
             marker.addEventListener('markerFound', () => {
-                if (!gameActive) { // Iniciar el juego solo la primera vez que se encuentra
+                if (!gameActive) {
                     showMessage("¡Marcador detectado! ¡Juego iniciado!");
                     createBridge();
                     gameActive = true;
@@ -158,7 +157,6 @@
              marker.addEventListener('markerLost', () => {
                 if(gameActive){
                     showMessage("Se perdió el marcador...");
-                    // Podríamos pausar el juego aquí si quisiéramos
                 }
             });
         </script>
