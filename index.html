@@ -4,7 +4,6 @@
     <meta charset="utf-8">
     <title>Puente de Cristal AR</title>
     <meta name="description" content="Juego de Realidad Aumentada inspirado en El Juego del Calamar.">
-    <!-- Carga de las librerías A-Frame y AR.js -->
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
@@ -21,27 +20,30 @@
     <div id="overlay">
         <div class="content">
             <h1>Puente de Cristal AR</h1>
-            <p>Apunta la cámara al marcador "Hiro" para empezar.<br>¡Toca los cuadros para cruzar!</p>
+            <p id="instruction-text">1. Apunta al marcador "Hiro".<br>2. Apunta el puente fantasma al suelo.<br>3. Toca la pantalla para colocarlo.</p>
             <button id="startButton">Entendido</button>
         </div>
     </div>
     <div id="message"></div>
 
-    <!-- Escena de A-Frame -->
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
-
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" id="scene">
         <a-marker preset="hiro" id="marker">
-            <!-- El puente se generará aquí con JavaScript -->
+            <!-- El puente fantasma se adjuntará aquí -->
         </a-marker>
-
         <a-entity camera></a-entity>
-
         <script>
             const startButton = document.getElementById('startButton');
             const overlay = document.getElementById('overlay');
+            const sceneEl = document.getElementById('scene');
             const marker = document.getElementById('marker');
-            let bridgeSquares = [];
+            const instructionText = document.getElementById('instruction-text');
+            
             let gameActive = false;
+            let bridgePlaced = false;
+            let placementMode = false;
+            let ghostBridge = null;
+            let realBridge = null;
+
             let currentRow = 0;
             const bridgeRows = 8;
 
@@ -50,46 +52,34 @@
                 setTimeout(() => { overlay.style.display = 'none'; }, 500);
             });
 
-            // Función para generar el puente
-            function createBridge() {
-                // Limpiar el puente anterior si existe
-                bridgeSquares.forEach(square => square.parentNode.removeChild(square));
-                bridgeSquares = [];
-                currentRow = 0;
-
+            function createBridge(isGhost = false) {
+                const container = document.createElement('a-entity');
                 const squareSize = 1;
                 const gap = 0.1;
 
                 for (let i = 0; i < bridgeRows; i++) {
-                    const safeIndex = Math.round(Math.random());
+                    const safeIndex = isGhost ? 0 : Math.round(Math.random());
                     for (let j = 0; j < 2; j++) {
                         const square = document.createElement('a-box');
-                        square.setAttribute('position', {
-                            x: (j * (squareSize + gap)) - (squareSize / 2 + gap / 2),
-                            y: 0,
-                            z: -(i * (squareSize + gap)) - 1
-                        });
-                        square.setAttribute('width', squareSize);
-                        square.setAttribute('height', 0.1);
-                        square.setAttribute('depth', squareSize);
-                        square.setAttribute('material', 'color: white; transparent: true; opacity: 0.4');
+                        square.setAttribute('position', { x: (j * (squareSize + gap)) - (squareSize / 2 + gap / 2), y: 0, z: -(i * (squareSize + gap)) - 1 });
+                        square.setAttribute('width', squareSize); square.setAttribute('height', 0.1); square.setAttribute('depth', squareSize);
                         
-                        // Guardar datos en el elemento
-                        square.dataset.row = i;
-                        square.dataset.isSafe = (j === safeIndex);
-
-                        square.addEventListener('click', handleInteraction);
-                        
-                        marker.appendChild(square);
-                        bridgeSquares.push(square);
+                        if (isGhost) {
+                            square.setAttribute('material', 'color: cyan; transparent: true; opacity: 0.3');
+                        } else {
+                            square.setAttribute('material', 'color: white; transparent: true; opacity: 0.4');
+                            square.dataset.row = i;
+                            square.dataset.isSafe = (j === safeIndex);
+                            square.addEventListener('click', handleInteraction);
+                        }
+                        container.appendChild(square);
                     }
                 }
+                return container;
             }
 
-            // Manejar la interacción
             function handleInteraction(event) {
                 if (!gameActive) return;
-
                 const clickedSquare = event.target;
                 const row = parseInt(clickedSquare.dataset.row);
                 const isSafe = clickedSquare.dataset.isSafe === 'true';
@@ -99,27 +89,37 @@
                         clickedSquare.setAttribute('material', 'color', 'lime');
                         clickedSquare.setAttribute('material', 'opacity', '0.9');
                         currentRow++;
-                        if (currentRow >= bridgeRows) {
-                            endGame(true);
-                        }
+                        if (currentRow >= bridgeRows) endGame(true);
                     } else {
-                        // Efecto de rotura
-                        clickedSquare.setAttribute('animation', {
-                            property: 'position',
-                            to: { x: clickedSquare.object3D.position.x, y: -5, z: clickedSquare.object3D.position.z },
-                            dur: 1500,
-                            easing: 'easeInQuad'
-                        });
-                        clickedSquare.setAttribute('animation__fade', {
-                            property: 'material.opacity',
-                            to: 0,
-                            dur: 1500
-                        });
+                        clickedSquare.setAttribute('animation', { property: 'position', to: { x: clickedSquare.object3D.position.x, y: -5, z: clickedSquare.object3D.position.z }, dur: 1500, easing: 'easeInQuad' });
+                        clickedSquare.setAttribute('animation__fade', { property: 'material.opacity', to: 0, dur: 1500 });
                         endGame(false);
                     }
                 }
             }
             
+            function resetGame() {
+                if (realBridge) {
+                    realBridge.parentNode.removeChild(realBridge);
+                    realBridge = null;
+                }
+                currentRow = 0;
+                bridgePlaced = false;
+                placementMode = false;
+                gameActive = false;
+                marker.object3D.visible = true;
+                
+                overlay.style.display = 'flex';
+                overlay.style.opacity = '1';
+                document.querySelector('#overlay h1').textContent = 'Puente de Cristal AR';
+                instructionText.innerHTML = "1. Apunta al marcador \"Hiro\".<br>2. Apunta el puente fantasma al suelo.<br>3. Toca la pantalla para colocarlo.";
+                startButton.textContent = 'Entendido';
+                startButton.onclick = () => {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => { overlay.style.display = 'none'; }, 500);
+                };
+            }
+
             function endGame(isWin) {
                 gameActive = false;
                 showMessage(isWin ? "¡Felicidades, has cruzado!" : "¡Juego Terminado! Has caído.");
@@ -129,12 +129,7 @@
                     document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : 'Juego Terminado';
                     document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
                     startButton.textContent = 'Reiniciar Juego';
-                    startButton.onclick = () => {
-                         overlay.style.opacity = '0';
-                         setTimeout(() => { overlay.style.display = 'none'; }, 500);
-                         createBridge();
-                         gameActive = true;
-                    };
+                    startButton.onclick = resetGame;
                 }, 3000);
             }
 
@@ -145,21 +140,43 @@
                 setTimeout(() => { msgEl.style.display = 'none'; }, 2500);
             }
 
-            // Detectar cuando el marcador es visible para iniciar el juego
             marker.addEventListener('markerFound', () => {
-                if (!gameActive) {
-                    showMessage("¡Marcador detectado! ¡Juego iniciado!");
-                    createBridge();
+                if (!bridgePlaced && !placementMode) {
+                    showMessage("¡Marcador detectado! Apunta al suelo y toca para colocar.");
+                    placementMode = true;
+                    ghostBridge = createBridge(true);
+                    marker.appendChild(ghostBridge);
+                }
+            });
+
+            marker.addEventListener('markerLost', () => {
+                if (placementMode && ghostBridge) {
+                    marker.removeChild(ghostBridge);
+                    ghostBridge = null;
+                    placementMode = false;
+                }
+            });
+
+            sceneEl.addEventListener('click', () => {
+                if (placementMode && ghostBridge) {
+                    const worldPosition = new THREE.Vector3();
+                    ghostBridge.object3D.getWorldPosition(worldPosition);
+                    
+                    marker.removeChild(ghostBridge);
+                    ghostBridge = null;
+                    
+                    realBridge = createBridge(false);
+                    realBridge.object3D.position.copy(worldPosition);
+                    sceneEl.appendChild(realBridge);
+                    
+                    placementMode = false;
+                    bridgePlaced = true;
                     gameActive = true;
+                    showMessage("¡Puente colocado! ¡Juego iniciado!");
+                    
+                    marker.object3D.visible = false;
                 }
             });
-
-             marker.addEventListener('markerLost', () => {
-                if(gameActive){
-                    showMessage("Se perdió el marcador...");
-                }
-            });
-
         </script>
     </a-scene>
 </body>
