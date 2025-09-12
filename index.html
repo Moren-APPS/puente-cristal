@@ -2,282 +2,56 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Puente de Cristal AR</title>
-    <!-- MEJORA: Carga de scripts tradicional y más robusta -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script type="importmap">
-        { "imports": { "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/" } }
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico de AR</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #000; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; transition: opacity 0.5s ease; }
-        .content { background-color: rgba(20, 20, 20, 0.8); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 0, 150, 0.5); border: 1px solid rgba(255, 0, 150, 0.7); }
-        h1 { font-size: 2.5em; margin-bottom: 10px; color: #FF0096; text-shadow: 0 0 10px #FF0096; }
-        p { font-size: 1.2em; margin-bottom: 25px; }
-        button { padding: 15px 30px; font-size: 1.2em; background-color: #FF0096; color: white; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; transition: all 0.3s ease; box-shadow: 0 0 15px #FF0096; }
-        #message { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.2em; z-index: 5; display: none; border: 1px solid #FF0096; max-width: 90%; text-align: center; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; background-color: #121212; color: #ffffff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+        .container { background-color: #1e1e1e; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #333; }
+        h1 { font-size: 2em; margin-bottom: 20px; }
+        p { font-size: 1.2em; line-height: 1.6; }
+        .success { color: #4ade80; font-weight: bold; }
+        .error { color: #f87171; font-weight: bold; }
+        code { background-color: #333; padding: 2px 6px; border-radius: 4px; font-family: "Courier New", Courier, monospace; }
     </style>
 </head>
 <body>
-    <div id="overlay">
-        <div class="content">
-            <h1>Puente de Cristal AR</h1>
-            <p>Elige tu modo de juego.<br>Para AR, asegúrate de estar en un espacio bien iluminado.</p>
-            <button id="play3DButton">Jugar en 3D</button>
+    <div class="container">
+        <h1>Herramienta de Diagnóstico WebXR</h1>
+        <div id="status">
+            <p>Revisando compatibilidad...</p>
         </div>
     </div>
-    <div id="message"></div>
 
-    <script type="module">
-        import { ARButton } from 'three/addons/webxr/ARButton.js';
+    <script>
+        const statusElement = document.getElementById('status');
 
+        // Asegurarse de que se ejecuta en HTTPS
         if (window.location.protocol !== 'https:') {
-            document.body.innerHTML = `<div id="overlay"><div class="content"><h1 style="color: #ff4d4d;">Error de Seguridad</h1><p>Esta experiencia requiere una conexión segura (HTTPS).</p></div></div>`;
-        }
-
-        let scene, camera, renderer, raycaster, controller, controls;
-        let bridge, reticle;
-        let hitTestSource = null;
-        let gameActive = false;
-        let bridgePlaced = false;
-        let currentRow = 0;
-        const bridgeRows = 8;
-        let shatteredFragments = [];
-        let isARMode = false;
-
-        const play3DButton = document.getElementById('play3DButton');
-        const overlay = document.getElementById('overlay');
-        
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 10, 7.5);
-            scene.add(directionalLight);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setAnimationLoop(render);
-            document.body.appendChild(renderer.domElement);
-            
-            // Usar el botón de AR oficial que hemos importado
-            const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
-            document.body.appendChild(arButton);
-            
-            renderer.xr.addEventListener('sessionstart', onSessionStarted);
-            renderer.xr.addEventListener('sessionend', () => window.location.reload());
-
-            raycaster = new THREE.Raycaster();
-            window.addEventListener('resize', onWindowResize);
-            
-            play3DButton.addEventListener('click', start3DMode);
-        }
-
-        function start3DMode() {
-            isARMode = false;
-            overlay.style.display = 'none';
-            document.getElementById('ARButton').style.display = 'none';
-            
-            scene.background = new THREE.Color(0x111827);
-            camera.position.set(0, 2, 4);
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 0, -2);
-            controls.update();
-
-            bridge = setupBridge();
-            scene.add(bridge);
-            bridgePlaced = true;
-            gameActive = true;
-            
-            window.addEventListener('click', handle3DInteraction);
-        }
-        
-        async function onSessionStarted() {
-            isARMode = true;
-            overlay.style.display = 'none';
-            
-            const session = renderer.xr.getSession();
-            controller = renderer.xr.getController(0);
-            controller.addEventListener('select', onSelectAR);
-            scene.add(controller);
-
-            reticle = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.07, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial());
-            reticle.matrixAutoUpdate = false;
-            reticle.visible = false;
-            scene.add(reticle);
-
-            const viewerSpace = await session.requestReferenceSpace('viewer');
-            hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-            
-            showMessage("Mueve tu teléfono para escanear el suelo.", false, 4000);
-        }
-
-        function onSelectAR() {
-            if (reticle.visible && !bridgePlaced) {
-                bridge = setupBridge();
-                bridge.position.setFromMatrixPosition(reticle.matrix);
-                scene.add(bridge);
-                bridgePlaced = true;
-                reticle.visible = false;
-                gameActive = true;
-                showMessage("¡Toca los cuadros para cruzar!", false, 3000);
-            } else if (bridgePlaced && gameActive) {
-                const tempMatrix = new THREE.Matrix4().identity().extractRotation(controller.matrixWorld);
-                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-                const intersects = raycaster.intersectObjects(bridge.children.filter(c => c.isSquare));
-                if (intersects.length > 0) handleInteraction(intersects[0].object);
-            }
-        }
-        
-        function handle3DInteraction(event) {
-            if (gameActive) {
-                const mouse = new THREE.Vector2();
-                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(bridge.children.filter(c => c.isSquare));
-                if (intersects.length > 0) handleInteraction(intersects[0].object);
-            }
-        }
-        
-        function setupBridge() {
-            const bridgeGroup = new THREE.Group();
-            const squareSize = 0.5;
-            const gap = 0.1;
-            for (let i = 0; i < bridgeRows; i++) {
-                const safeIndex = Math.round(Math.random());
-                for (let j = 0; j < 2; j++) {
-                    const geometry = new THREE.BoxGeometry(squareSize, 0.05, squareSize);
-                    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, metalness: 0.1, roughness: 0.2 });
-                    const square = new THREE.Mesh(geometry, material);
-                    square.position.z = -(i * (squareSize + gap));
-                    square.position.x = (j * (squareSize + gap)) - (squareSize / 2 + gap/2);
-                    square.isSquare = true; square.isSafe = (j === safeIndex); square.row = i;
-                    bridgeGroup.add(square);
-                }
-            }
-            return bridgeGroup;
-        }
-
-        function handleInteraction(clickedMesh) {
-            if (clickedMesh.row === currentRow) {
-                if (clickedMesh.isSafe) {
-                    clickedMesh.material.color.setHex(0x00ff00);
-                    clickedMesh.material.opacity = 0.9;
-                    currentRow++;
-                    if (currentRow >= bridgeRows) endGame(true);
-                } else {
-                    shatterSquare(clickedMesh);
-                    endGame(false);
-                }
-            }
-        }
-
-        function shatterSquare(mesh) {
-            mesh.visible = false;
-            const numFragments = 16;
-            const fragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.5 });
-            const worldPosition = new THREE.Vector3();
-            mesh.getWorldPosition(worldPosition);
-            for (let i = 0; i < numFragments; i++) {
-                const fragment = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), fragmentMaterial);
-                fragment.position.copy(worldPosition);
-                const velocity = new THREE.Vector3((Math.random() - 0.5) * 0.5, Math.random() * 0.5, (Math.random() - 0.5) * 0.5);
-                shatteredFragments.push({ mesh: fragment, velocity: velocity, lifetime: 120 });
-                scene.add(fragment);
-            }
-        }
-        
-        function resetGame() {
-            overlay.style.opacity = '0';
-            setTimeout(() => { overlay.style.display = 'none'; }, 500);
-            
-            if (bridge) scene.remove(bridge);
-            shatteredFragments.forEach(f => scene.remove(f.mesh));
-            shatteredFragments = [];
-            
-            bridge = setupBridge();
-            if(!isARMode) {
-                 scene.add(bridge);
-            }
-            
-            currentRow = 0;
-            gameActive = true;
-            bridgePlaced = !isARMode;
-             if (isARMode) {
-                reticle.visible = true;
-                showMessage("Mueve tu teléfono para escanear el suelo.", false, 4000);
-             }
-        }
-
-        function endGame(isWin) {
-            gameActive = false;
-            showMessage(isWin ? "¡Felicidades, has cruzado!" : "¡Juego Terminado! Has caído.", !isWin);
-            setTimeout(() => {
-                overlay.style.display = 'flex';
-                overlay.style.opacity = '1';
-                document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : '¡Juego Terminado!';
-                document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
-                play3DButton.textContent = 'Reiniciar Juego';
-                play3DButton.onclick = resetGame;
-                if(isARMode) document.getElementById('ARButton').style.display = 'none';
-
-            }, 3000);
-        }
-        
-        function render(timestamp, frame) {
-            if (isARMode && frame) {
-                if (hitTestSource && !bridgePlaced) {
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
-                    if (hitTestResults.length) {
-                        const hit = hitTestResults[0];
-                        const referenceSpace = renderer.xr.getReferenceSpace();
-                        if (referenceSpace) {
-                            reticle.visible = true;
-                            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-                        }
+            statusElement.innerHTML = '<p class="error">ERROR: Esta página debe ser cargada usando HTTPS.</p>';
+        } else {
+            // Revisar si el objeto 'xr' existe en el navegador
+            if (navigator.xr) {
+                let initialMessage = '<p class="success">Paso 1: ¡Éxito! Tu navegador tiene el objeto <code>navigator.xr</code>.</p>';
+                statusElement.innerHTML = initialMessage;
+                
+                // Revisar si soporta la Realidad Aumentada inmersiva
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    if (supported) {
+                        statusElement.innerHTML += '<p class="success">Paso 2: ¡FELICIDADES! Tu navegador y dispositivo <strong>SÍ soportan</strong> Realidad Aumentada (immersive-ar).</p>';
+                        statusElement.innerHTML += '<p style="font-weight: normal; color: #ccc;">Si el juego anterior no funcionó, el problema está en el código del juego, no en tu celular.</p>';
                     } else {
-                        reticle.visible = false;
+                        statusElement.innerHTML += '<p class="error">Paso 2: ERROR. Tu navegador reporta que <strong>NO soporta</strong> Realidad Aumentada (immersive-ar).</p>';
+                        statusElement.innerHTML += '<p style="font-weight: normal; color: #ccc;">Esto usualmente se debe a un ajuste de permisos en la Configuración de Safari. El problema está en la configuración de tu celular.</p>';
                     }
-                }
-            }
-            
-            for (let i = shatteredFragments.length - 1; i >= 0; i--) {
-                const f = shatteredFragments[i];
-                f.mesh.position.addScaledVector(f.velocity, 0.016);
-                f.velocity.y -= 0.01;
-                f.lifetime--;
-                if (f.lifetime <= 0) {
-                    scene.remove(f.mesh);
-                    shatteredFragments.splice(i, 1);
-                }
-            }
-            if(controls) controls.update();
-            renderer.render(scene, camera);
-        }
+                }).catch((err) => {
+                    statusElement.innerHTML += `<p class="error">Paso 2: Ocurrió un error técnico al preguntar por el soporte de AR: ${err.message}</p>`;
+                });
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            } else {
+                statusElement.innerHTML = '<p class="error">ERROR CRÍTICO: Tu navegador <strong>NO tiene</strong> el objeto <code>navigator.xr</code>.</p>';
+                 statusElement.innerHTML += '<p style="font-weight: normal; color: #ccc;">Esto significa que la Realidad Aumentada está completamente desactivada. Por favor, asegúrate de estar usando la última versión de Safari en la última versión de iOS.</p>';
+            }
         }
-        
-        function showMessage(text, isError = false, duration = 3000) { 
-            const msgEl = document.getElementById('message');
-            msgEl.textContent = text; 
-            msgEl.style.backgroundColor = isError ? 'rgba(200, 0, 0, 0.8)' : 'rgba(0,0,0,0.7)'; 
-            msgEl.style.display = 'block'; 
-            setTimeout(() => { msgEl.style.display = 'none'; }, duration);
-        }
-
-        init();
     </script>
 </body>
 </html>
