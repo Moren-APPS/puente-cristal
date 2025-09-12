@@ -5,8 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Puente de Cristal AR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- MEJORA: Se añade OrbitControls para el modo 3D -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- MEJORA: Se importa el botón de AR oficial y compatible -->
+    <script type="module">
+        import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/ARButton.js';
+        
+        // Se hace global para poder acceder desde el script principal
+        window.ARButton = ARButton; 
+    </script>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #000; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; transition: opacity 0.5s ease; }
@@ -14,21 +20,34 @@
         h1 { font-size: 2.5em; margin-bottom: 10px; color: #FF0096; text-shadow: 0 0 10px #FF0096; }
         p { font-size: 1.2em; margin-bottom: 25px; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #FF0096; color: white; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; transition: all 0.3s ease; box-shadow: 0 0 15px #FF0096; }
-        #message { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.2em; z-index: 5; display: none; border: 1px solid #FF0096; max-width: 90%; text-align: center; }
-        #entry-button { position: absolute; bottom: 20px; right: 20px; padding: 12px 24px; border: 1px solid #fff; border-radius: 4px; background: rgba(0,0,0,0.4); color: #fff; font: 16px sans-serif; z-index: 100; cursor: pointer; }
+        #message { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.2em; z-index: 5; display: none; border: 1px solid #FF0096; max-width: 90%; text-align: center; }
+        /* El botón de AR ahora se crea por JS, pero podemos darle estilo */
+        #ARButton {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border: 1px solid #fff;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.4);
+            color: #fff;
+            font: 16px sans-serif;
+            z-index: 100;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <div id="overlay">
         <div class="content">
             <h1>Puente de Cristal AR</h1>
-            <p>Comprueba si tu dispositivo es compatible con AR o juega en modo 3D.</p>
-            <button id="startButton">Comenzar</button>
+            <p>Elige tu modo de juego.<br>Para AR, asegúrate de estar en un espacio bien iluminado.</p>
+            <button id="play3DButton">Jugar en 3D</button>
         </div>
     </div>
     <div id="message"></div>
 
-    <script>
+    <script type="module">
         if (window.location.protocol !== 'https:') {
             document.body.innerHTML = `<div id="overlay"><div class="content"><h1 style="color: #ff4d4d;">Error de Seguridad</h1><p>Esta experiencia requiere una conexión segura (HTTPS).</p></div></div>`;
         }
@@ -43,16 +62,10 @@
         let shatteredFragments = [];
         let isARMode = false;
 
-        const startButton = document.getElementById('startButton');
+        const play3DButton = document.getElementById('play3DButton');
         const overlay = document.getElementById('overlay');
-        const message = document.getElementById('message');
-
-        startButton.addEventListener('click', init);
-
-        async function init() {
-            overlay.style.opacity = '0';
-            setTimeout(() => { overlay.style.display = 'none'; }, 500);
-
+        
+        function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             
@@ -65,36 +78,26 @@
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setAnimationLoop(render); // Iniciar el bucle de renderizado
             document.body.appendChild(renderer.domElement);
             
-            const entryButton = document.createElement('button');
-            entryButton.id = 'entry-button';
-            document.body.appendChild(entryButton);
+            // MEJORA: Usar el botón de AR oficial
+            const arButton = window.ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+            document.body.appendChild(arButton);
             
-            // MEJORA: Comprobar compatibilidad con WebXR
-            if (navigator.xr) {
-                const isSupported = await navigator.xr.isSessionSupported('immersive-ar');
-                if (isSupported) {
-                    isARMode = true;
-                    entryButton.textContent = 'ENTRAR EN AR';
-                    entryButton.onclick = startARSession;
-                } else {
-                    entryButton.textContent = 'JUGAR EN 3D';
-                    entryButton.onclick = start3DMode;
-                }
-            } else {
-                entryButton.textContent = 'JUGAR EN 3D';
-                entryButton.onclick = start3DMode;
-            }
+            renderer.xr.addEventListener('sessionstart', onSessionStarted);
+            renderer.xr.addEventListener('sessionend', () => window.location.reload());
 
             raycaster = new THREE.Raycaster();
             window.addEventListener('resize', onWindowResize);
-            renderer.setAnimationLoop(render);
+            
+            play3DButton.addEventListener('click', start3DMode);
         }
 
         function start3DMode() {
-            document.getElementById('entry-button').style.display = 'none';
-            renderer.setAnimationLoop(render);
+            isARMode = false;
+            overlay.style.display = 'none';
+            document.getElementById('ARButton').style.display = 'none';
             
             scene.background = new THREE.Color(0x111827);
             camera.position.set(0, 2, 4);
@@ -110,21 +113,11 @@
             window.addEventListener('click', handle3DInteraction);
         }
         
-        async function startARSession() {
-            try {
-                const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
-                renderer.xr.enabled = true;
-                renderer.xr.setSession(session);
-                document.getElementById('entry-button').style.display = 'none';
-                onSessionStarted(session);
-            } catch (e) {
-                console.error("No se pudo iniciar la sesión de AR:", e);
-                showMessage("No se pudo iniciar la sesión de AR.", true);
-            }
-        }
-        
-        async function onSessionStarted(session) {
-            session.addEventListener('end', () => window.location.reload());
+        async function onSessionStarted() {
+            isARMode = true;
+            overlay.style.display = 'none';
+            
+            const session = renderer.xr.getSession();
             controller = renderer.xr.getController(0);
             controller.addEventListener('select', onSelectAR);
             scene.add(controller);
@@ -136,6 +129,8 @@
 
             const viewerSpace = await session.requestReferenceSpace('viewer');
             hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+            
+            showMessage("Mueve tu teléfono para escanear el suelo.", false, 4000);
         }
 
         function onSelectAR() {
@@ -146,6 +141,7 @@
                 bridgePlaced = true;
                 reticle.visible = false;
                 gameActive = true;
+                showMessage("¡Toca los cuadros para cruzar!", false, 3000);
             } else if (bridgePlaced && gameActive) {
                 const tempMatrix = new THREE.Matrix4().identity().extractRotation(controller.matrixWorld);
                 raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
@@ -156,12 +152,14 @@
         }
         
         function handle3DInteraction(event) {
-            const mouse = new THREE.Vector2();
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(bridge.children.filter(c => c.isSquare));
-            if (intersects.length > 0) handleInteraction(intersects[0].object);
+            if (gameActive) {
+                const mouse = new THREE.Vector2();
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(bridge.children.filter(c => c.isSquare));
+                if (intersects.length > 0) handleInteraction(intersects[0].object);
+            }
         }
         
         function setupBridge() {
@@ -184,7 +182,7 @@
         }
 
         function handleInteraction(clickedMesh) {
-            if (gameActive && clickedMesh.row === currentRow) {
+            if (clickedMesh.row === currentRow) {
                 if (clickedMesh.isSafe) {
                     clickedMesh.material.color.setHex(0x00ff00);
                     clickedMesh.material.opacity = 0.9;
@@ -212,7 +210,6 @@
             }
         }
         
-        // MEJORA: Lógica de reinicio sin recargar la página
         function resetGame() {
             overlay.style.opacity = '0';
             setTimeout(() => { overlay.style.display = 'none'; }, 500);
@@ -224,11 +221,14 @@
             bridge = setupBridge();
             if(isARMode && reticle.visible){
                  bridge.position.setFromMatrixPosition(reticle.matrix);
+            } else if (!isARMode) {
+                 scene.add(bridge);
             }
-            scene.add(bridge);
             
             currentRow = 0;
             gameActive = true;
+            bridgePlaced = !isARMode; // En 3D, el puente está colocado desde el principio
+             if (isARMode) showMessage("Mueve tu teléfono para escanear el suelo.", false, 4000);
         }
 
         function endGame(isWin) {
@@ -239,9 +239,11 @@
                 overlay.style.opacity = '1';
                 document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : '¡Juego Terminado!';
                 document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
-                const restartButton = document.getElementById('startButton');
-                restartButton.textContent = 'Reiniciar Juego';
-                restartButton.onclick = resetGame; // <-- Llama a la nueva función de reinicio
+                play3DButton.textContent = 'Reiniciar Juego 3D';
+                play3DButton.onclick = () => {
+                    isARMode = false;
+                    resetGame();
+                };
             }, 3000);
         }
         
@@ -252,8 +254,10 @@
                     if (hitTestResults.length) {
                         const hit = hitTestResults[0];
                         const referenceSpace = renderer.xr.getReferenceSpace();
-                        reticle.visible = true;
-                        reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                        if (referenceSpace) {
+                            reticle.visible = true;
+                            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                        }
                     } else {
                         reticle.visible = false;
                     }
@@ -280,13 +284,15 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        function showMessage(text, isError = false) { 
+        function showMessage(text, isError = false, duration = 3000) { 
             const msgEl = document.getElementById('message');
             msgEl.textContent = text; 
             msgEl.style.backgroundColor = isError ? 'rgba(200, 0, 0, 0.8)' : 'rgba(0,0,0,0.7)'; 
             msgEl.style.display = 'block'; 
-            setTimeout(() => { msgEl.style.display = 'none'; }, 3000);
+            setTimeout(() => { msgEl.style.display = 'none'; }, duration);
         }
+
+        init();
     </script>
 </body>
 </html>
