@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR - Versión Punto 2D</title>
+    <title>Reto Dalgona AR - Versión Estable</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -46,8 +46,7 @@
         arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
         vr-mode-ui="enabled: false"
         renderer="alpha: true; antialias: true;">
-        <a-marker preset="hiro" id="needle-marker">
-            </a-marker>
+        <a-marker preset="hiro" id="needle-marker"></a-marker>
         <a-entity camera></a-entity>
     </a-scene>
 
@@ -56,7 +55,7 @@
         let timerInterval;
         let timeLeft = 60;
         let currentShape = '';
-        let userTrace = []; // Almacena los puntos del trazo del usuario
+        let userTrace = [];
 
         const gameCanvas = document.getElementById('game-canvas');
         const gameCtx = gameCanvas.getContext('2d');
@@ -67,6 +66,7 @@
         const overlay = document.getElementById('overlay');
         
         function startGame(shape) {
+            console.log("Iniciando juego con la forma:", shape);
             currentShape = shape;
             userTrace = [];
             overlay.style.display = 'none';
@@ -75,13 +75,20 @@
             
             setTimeout(() => {
                 const containerSize = gameCanvas.offsetWidth;
+                console.log("Tamaño del contenedor del juego:", containerSize);
+
+                if (containerSize === 0) {
+                    console.error("¡ERROR! El canvas no tiene tamaño. El juego no puede renderizar.");
+                    return;
+                }
+
                 gameCanvas.width = containerSize;
                 gameCanvas.height = containerSize;
                 timeLeft = 60;
                 timerElement.textContent = timeLeft;
                 gameActive = true;
                 timerInterval = setInterval(updateTimer, 1000);
-            }, 100);
+            }, 200); // Aumentado el tiempo por seguridad
         }
 
         function drawShape(shape, ctx, size) {
@@ -98,48 +105,42 @@
             ctx.stroke();
         }
         
-        scene.addEventListener('render-target-loaded', function () {
-            function renderLoop() {
-                requestAnimationFrame(renderLoop);
-                if (!gameActive) return;
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            if (!gameActive) return;
 
-                const canvasSize = gameCanvas.width;
-                // 1. Limpiamos el lienzo
-                gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-                
-                // 2. Dibujamos la forma de la galleta
-                drawShape(currentShape, gameCtx, canvasSize);
+            const canvasSize = gameCanvas.width;
+            gameCtx.clearRect(0, 0, canvasSize, canvasSize);
+            drawShape(currentShape, gameCtx, canvasSize);
 
-                // 3. Dibujamos el trazo que el usuario ha hecho
-                if (userTrace.length > 1) {
-                    gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)'; // Color rojo para el trazo
-                    gameCtx.lineWidth = 15;
-                    gameCtx.lineCap = "round";
-                    gameCtx.beginPath();
-                    gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
-                    for(let i = 1; i < userTrace.length; i++) {
-                        gameCtx.lineTo(userTrace[i].x, userTrace[i].y);
-                    }
-                    gameCtx.stroke();
+            if (userTrace.length > 1) {
+                gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
+                gameCtx.lineWidth = 15;
+                gameCtx.lineCap = "round";
+                gameCtx.beginPath();
+                gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
+                for (let i = 1; i < userTrace.length; i++) {
+                    gameCtx.lineTo(userTrace[i].x, userTrace[i].y);
                 }
+                gameCtx.stroke();
+            }
 
-                if (needleMarker.object3D.visible) {
-                    const screenPos = getScreenPosition(needleMarker.object3D);
-                    
-                    // 4. DIBUJAMOS EL CURSOR (EL PUNTO 2D)
-                    gameCtx.fillStyle = '#00FFFF'; // Color Cian para el punto
-                    gameCtx.beginPath();
-                    gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
-                    gameCtx.fill();
-                    
-                    // 5. Verificamos si está sobre el camino
-                    if (isWithinBounds(screenPos)) {
-                        checkCut(screenPos.x, screenPos.y);
-                    }
+            if (needleMarker.object3D.visible) {
+                const screenPos = getScreenPosition(needleMarker.object3D);
+                
+                // Dibuja el punto/cursor
+                gameCtx.fillStyle = '#00FFFF';
+                gameCtx.beginPath();
+                gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
+                gameCtx.fill();
+                
+                if (isWithinBounds(screenPos)) {
+                    checkCut(screenPos.x, screenPos.y);
                 }
             }
-            renderLoop();
-        });
+        }
+        // Iniciamos el bucle de renderizado globalmente
+        renderLoop();
         
         function getScreenPosition(object3D) {
             const vector = new THREE.Vector3();
@@ -153,17 +154,13 @@
             return { x: screenX - gameRect.left, y: screenY - gameRect.top };
         }
 
-        function isWithinBounds(pos) {
-            return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height;
-        }
+        function isWithinBounds(pos) { return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height; }
 
         function checkCut(x, y) {
             if (!gameActive) return;
             const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            let isOnPath = pixelData[3] > 128; // Revisa si el píxel NO es transparente
-
-            if (isOnPath) {
-                userTrace.push({x: x, y: y});
+            if (pixelData[3] > 128) {
+                userTrace.push({ x: x, y: y });
             } else {
                 endGame(false);
             }
