@@ -2,21 +2,35 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR - Versión Estable</title>
+    <title>Reto Dalgona AR - Versión Final</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; }
-        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; display: flex; justify-content: center; align-items: center; pointer-events: none; }
-        .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
-        #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #crack-img { pointer-events: none; display: none; }
-        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
+        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; overflow: hidden; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 200; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; }
         h1 { font-size: 2.5em; color: #FFA500; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; }
+
+        /* ▼▼▼ CSS CORREGIDO PARA UN CENTRADO PRECISO ▼▼▼ */
+        .game-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 90vw;
+            height: 90vw;
+            max-width: 500px;
+            max-height: 500px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        /* ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲ */
+
+        #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #crack-img { pointer-events: none; display: none; }
+        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 110; }
     </style>
 </head>
 <body style="margin: 0px; overflow: hidden;">
@@ -33,13 +47,11 @@
         </div>
     </div>
     
-    <div id="game-ui" style="display:none;">
-        <div class="game-container">
-            <canvas id="game-canvas"></canvas>
-            <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
-        </div>
-        <div id="timer">60</div>
+    <div class="game-container" id="game-container" style="display:none;">
+        <canvas id="game-canvas"></canvas>
+        <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
     </div>
+    <div id="timer">60</div>
 
     <a-scene 
         embedded 
@@ -51,44 +63,29 @@
     </a-scene>
 
     <script>
-        let gameActive = false;
-        let timerInterval;
-        let timeLeft = 60;
-        let currentShape = '';
-        let userTrace = [];
-
-        const gameCanvas = document.getElementById('game-canvas');
-        const gameCtx = gameCanvas.getContext('2d');
-        const needleMarker = document.getElementById('needle-marker');
-        const scene = document.querySelector('a-scene');
-        const crackImg = document.getElementById('crack-img');
-        const timerElement = document.getElementById('timer');
-        const overlay = document.getElementById('overlay');
+        let gameActive = false, timerInterval, timeLeft = 60, currentShape = '', userTrace = [];
+        const gameCanvas = document.getElementById('game-canvas'), gameCtx = gameCanvas.getContext('2d');
+        const needleMarker = document.getElementById('needle-marker'), scene = document.querySelector('a-scene');
+        const crackImg = document.getElementById('crack-img'), timerElement = document.getElementById('timer');
+        const overlay = document.getElementById('overlay'), gameContainer = document.getElementById('game-container');
         
         function startGame(shape) {
-            console.log("Iniciando juego con la forma:", shape);
             currentShape = shape;
             userTrace = [];
             overlay.style.display = 'none';
-            document.getElementById('game-ui').style.display = 'flex';
+            gameContainer.style.display = 'block';
             crackImg.style.display = 'none';
             
             setTimeout(() => {
                 const containerSize = gameCanvas.offsetWidth;
-                console.log("Tamaño del contenedor del juego:", containerSize);
-
-                if (containerSize === 0) {
-                    console.error("¡ERROR! El canvas no tiene tamaño. El juego no puede renderizar.");
-                    return;
-                }
-
+                if (containerSize === 0) return;
                 gameCanvas.width = containerSize;
                 gameCanvas.height = containerSize;
                 timeLeft = 60;
                 timerElement.textContent = timeLeft;
                 gameActive = true;
                 timerInterval = setInterval(updateTimer, 1000);
-            }, 200); // Aumentado el tiempo por seguridad
+            }, 100);
         }
 
         function drawShape(shape, ctx, size) {
@@ -100,7 +97,7 @@
             switch (shape) {
                 case "triangle": ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0)); for (let i = 1; i <= 3; i++) { ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3)) } break;
                 case "star": const r = radius, ir = r / 2.5; ctx.moveTo(centerX, centerY - r); for (let i = 0; i < 5; i++) { const a = Math.PI / 2 + (i * 2 * Math.PI / 5); ctx.lineTo(centerX + Math.cos(a - Math.PI / 5) * ir, centerY - Math.sin(a - Math.PI / 5) * ir); ctx.lineTo(centerX + Math.cos(a) * r, centerY - Math.sin(a) * r) } ctx.closePath(); break;
-                case "umbrella": const h = radius * 0.7, b = radius * 0.2; ctx.arc(centerX, centerY, radius, Math.PI, 0); ctx.lineTo(centerX + radius, centerY); ctx.lineTo(centerX, centerY); ctx.lineTo(centerX, centerY + h); ctx.arc(centerX - b, centerY + h, b, 0, Math.PI / 2, !1); break;
+                case "umbrella": const h = radius * 0.7, b = radius * 0.2; ctx.arc(centerX, centerY, radius, Math.PI, 0); ctx.lineTo(centerX + radius, centerY); ctx.lineTo(centerX, centerY); ctx.lineTo(centerX, centerY + h); ctx.arc(centerX - b, centerY + h, b, 0, Math.PI / 2, false); break;
             }
             ctx.stroke();
         }
@@ -108,38 +105,27 @@
         function renderLoop() {
             requestAnimationFrame(renderLoop);
             if (!gameActive) return;
-
             const canvasSize = gameCanvas.width;
             gameCtx.clearRect(0, 0, canvasSize, canvasSize);
             drawShape(currentShape, gameCtx, canvasSize);
-
             if (userTrace.length > 1) {
                 gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
                 gameCtx.lineWidth = 15;
                 gameCtx.lineCap = "round";
                 gameCtx.beginPath();
                 gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
-                for (let i = 1; i < userTrace.length; i++) {
-                    gameCtx.lineTo(userTrace[i].x, userTrace[i].y);
-                }
+                for (let i = 1; i < userTrace.length; i++) { gameCtx.lineTo(userTrace[i].x, userTrace[i].y); }
                 gameCtx.stroke();
             }
-
             if (needleMarker.object3D.visible) {
                 const screenPos = getScreenPosition(needleMarker.object3D);
-                
-                // Dibuja el punto/cursor
                 gameCtx.fillStyle = '#00FFFF';
                 gameCtx.beginPath();
                 gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
                 gameCtx.fill();
-                
-                if (isWithinBounds(screenPos)) {
-                    checkCut(screenPos.x, screenPos.y);
-                }
+                if (isWithinBounds(screenPos)) { checkCut(screenPos.x, screenPos.y); }
             }
         }
-        // Iniciamos el bucle de renderizado globalmente
         renderLoop();
         
         function getScreenPosition(object3D) {
@@ -161,9 +147,7 @@
             const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
             if (pixelData[3] > 128) {
                 userTrace.push({ x: x, y: y });
-            } else {
-                endGame(false);
-            }
+            } else { if (userTrace.length > 5) endGame(false); } // Pequeña tolerancia para no perder al instante
         }
         
         function updateTimer() { if (--timeLeft <= 0) endGame(false); timerElement.textContent = timeLeft; }
