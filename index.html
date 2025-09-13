@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR (Con Luces)</title>
+    <title>Reto Dalgona AR (Test de Visibilidad)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -24,7 +24,7 @@
     <div id="overlay">
         <div class="content">
             <h1>Reto Dalgona AR</h1>
-            <p>Pega el marcador "Hiro" en la punta de un lápiz.<br>Elige una forma para empezar.</p>
+            <p>Elige una forma para empezar la prueba.</p>
             <div id="shape-selector" style="margin-bottom: 20px;">
                 <button onclick="startGame('triangle')">Triángulo</button>
                 <button onclick="startGame('star')">Estrella</button>
@@ -46,12 +46,11 @@
         arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
         vr-mode-ui="enabled: false"
         renderer="alpha: true; antialias: true;">
-        
         <a-entity light="type: ambient; color: #BBB"></a-entity>
         <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1"></a-entity>
         <a-marker preset="hiro" id="needle-marker">
             <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver; metalness: 0.8;"></a-cone>
-            </a-marker>
+        </a-marker>
         <a-entity camera></a-entity>
     </a-scene>
 
@@ -60,90 +59,57 @@
         let timerInterval;
         let timeLeft = 60;
         let currentShape = '';
-        
         const gameCanvas = document.getElementById('game-canvas');
         const gameCtx = gameCanvas.getContext('2d');
-        
-        const needleMarker = document.getElementById('needle-marker');
-        const scene = document.querySelector('a-scene');
-        // ... (el resto de las constantes sin cambios) ...
-        const crackImg=document.getElementById("crack-img"),timerElement=document.getElementById("timer"),overlay=document.getElementById("overlay");
         
         function startGame(shape) {
             currentShape = shape;
             overlay.style.display = 'none';
             document.getElementById('game-ui').style.display = 'flex';
-            crackImg.style.display = 'none';
             
             setTimeout(() => {
                 const containerSize = gameCanvas.offsetWidth;
                 gameCanvas.width = containerSize;
                 gameCanvas.height = containerSize;
                 
-                // ▼▼▼ DIBUJO INICIAL GARANTIZADO ▼▼▼
-                // Dibuja la forma una vez aquí para asegurar que aparezca
+                // Dibuja la forma inicial
                 drawShape(currentShape, gameCtx, containerSize);
-                // ▲▲▲ FIN DE DIBUJO INICIAL ▲▲▲
 
-                timeLeft = 60;
-                timerElement.textContent = timeLeft;
                 gameActive = true;
-                timerInterval = setInterval(updateTimer, 1000);
+                // No iniciamos el timer para la prueba
             }, 100);
         }
 
         function drawShape(shape, ctx, size) {
-            // ... (código de dibujo de formas sin cambios) ...
-            const centerX=size/2,centerY=size/2,radius=size*.35;ctx.strokeStyle="rgba(255, 199, 102, 1)";ctx.lineWidth=20;ctx.lineCap="round";ctx.beginPath();switch(shape){case"triangle":ctx.moveTo(centerX+radius*Math.cos(0),centerY+radius*Math.sin(0));for(let i=1;i<=3;i++){ctx.lineTo(centerX+radius*Math.cos(i*2*Math.PI/3),centerY+radius*Math.sin(i*2*Math.PI/3))}break;case"star":const r=radius,ir=r/2.5;ctx.moveTo(centerX,centerY-r);for(let i=0;i<5;i++){const a=Math.PI/2+(i*2*Math.PI/5);ctx.lineTo(centerX+Math.cos(a-Math.PI/5)*ir,centerY-Math.sin(a-Math.PI/5)*ir);ctx.lineTo(centerX+Math.cos(a)*r,centerY-Math.sin(a)*r)}
+             const centerX=size/2,centerY=size/2,radius=size*.35;ctx.strokeStyle="rgba(255, 199, 102, 1)";ctx.lineWidth=20;ctx.lineCap="round";ctx.beginPath();switch(shape){case"triangle":ctx.moveTo(centerX+radius*Math.cos(0),centerY+radius*Math.sin(0));for(let i=1;i<=3;i++){ctx.lineTo(centerX+radius*Math.cos(i*2*Math.PI/3),centerY+radius*Math.sin(i*2*Math.PI/3))}break;case"star":const r=radius,ir=r/2.5;ctx.moveTo(centerX,centerY-r);for(let i=0;i<5;i++){const a=Math.PI/2+(i*2*Math.PI/5);ctx.lineTo(centerX+Math.cos(a-Math.PI/5)*ir,centerY-Math.sin(a-Math.PI/5)*ir);ctx.lineTo(centerX+Math.cos(a)*r,centerY-Math.sin(a)*r)}
 ctx.closePath();break;case"umbrella":const h=radius*.7,b=radius*.2;ctx.arc(centerX,centerY,radius,Math.PI,0);ctx.lineTo(centerX+radius,centerY);ctx.lineTo(centerX,centerY);ctx.lineTo(centerX,centerY+h);ctx.arc(centerX-b,centerY+h,b,0,Math.PI/2,!1);break}
 ctx.stroke()
         }
         
-        scene.addEventListener('render-target-loaded', function () {
-            function renderLoop() {
-                requestAnimationFrame(renderLoop);
-                if (!gameActive) return;
+        // ▼▼▼ FUNCIÓN DE RENDER LOOP MODIFICADA PARA LA PRUEBA ▼▼▼
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            if (!gameActive) return;
 
-                const canvasSize = gameCanvas.width;
-                gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-                drawShape(currentShape, gameCtx, canvasSize);
+            const canvasSize = gameCanvas.width;
+            // Limpiamos y redibujamos la forma base
+            gameCtx.clearRect(0, 0, canvasSize, canvasSize);
+            drawShape(currentShape, gameCtx, canvasSize);
 
-                if (needleMarker.object3D.visible) {
-                    const screenPos = getScreenPosition(needleMarker.object3D);
-                    
-                    gameCtx.fillStyle = 'cyan';
-                    gameCtx.beginPath();
-                    gameCtx.arc(screenPos.x, screenPos.y, 15, 0, Math.PI * 2);
-                    gameCtx.fill();
+            // TEST: Dibujar un punto azul fijo en la esquina superior izquierda del área de la figura
+            const testX = canvasSize * 0.25;
+            const testY = canvasSize * 0.25;
+            
+            gameCtx.fillStyle = 'blue';
+            gameCtx.beginPath();
+            gameCtx.arc(testX, testY, 20, 0, Math.PI * 2); // Círculo azul de radio 20
+            gameCtx.fill();
+        }
 
-                    if (isWithinBounds(screenPos)) {
-                        checkCut(screenPos.x, screenPos.y);
-                    }
-                }
-            }
-            renderLoop();
-        });
+        // Inicia el bucle de renderizado inmediatamente
+        renderLoop();
         
-        function getScreenPosition(object3D) {
-            // ... (función sin cambios) ...
-            const vector=new THREE.Vector3;object3D.updateMatrixWorld();vector.setFromMatrixPosition(object3D.matrixWorld);vector.project(scene.camera);const gameContainer=document.querySelector(".game-container"),rect=gameContainer.getBoundingClientRect();const x=(vector.x+1)/2*rect.width,y=-(vector.y-1)/2*rect.height;return{x:x,y:y}
-        }
-
-        function isWithinBounds(pos) {
-            return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height;
-        }
-
-        function checkCut(x, y) {
-            // ... (función sin cambios) ...
-            if(!gameActive)return;const pixelData=gameCtx.getImageData(x,y,1,1).data;let isOnPath=pixelData[3]>128;if(!isOnPath){endGame(!1)}
-        }
-        
-        function updateTimer() { timeLeft--; timerElement.textContent = timeLeft; if (timeLeft <= 0) { endGame(false); } }
-        function endGame(isWin) {
-            // ... (función sin cambios) ...
-            if(!gameActive)return;gameActive=!1;clearInterval(timerInterval);const h1=overlay.querySelector("h1"),p=overlay.querySelector("p");if(isWin){h1.textContent="¡Felicidades!";p.textContent="Has cortado la forma a la perfección."}else{crackImg.style.display="block";h1.textContent="¡Has Perdido!";p.textContent="Te has salido de la línea."}
-overlay.querySelector("#shape-selector").innerHTML='<button onclick="window.location.reload()">Jugar de Nuevo</button>';overlay.style.display="flex"
-        }
+        // El resto de las funciones no se usarán en esta prueba
     </script>
 </body>
 </html>
