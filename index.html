@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR (Test de Visibilidad)</title>
+    <title>Reto Dalgona AR - ¡Funcional!</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -24,7 +24,7 @@
     <div id="overlay">
         <div class="content">
             <h1>Reto Dalgona AR</h1>
-            <p>Elige una forma para empezar la prueba.</p>
+            <p>Pega el marcador "Hiro" en la punta de un lápiz.<br>Elige una forma para empezar.</p>
             <div id="shape-selector" style="margin-bottom: 20px;">
                 <button onclick="startGame('triangle')">Triángulo</button>
                 <button onclick="startGame('star')">Estrella</button>
@@ -59,24 +59,29 @@
         let timerInterval;
         let timeLeft = 60;
         let currentShape = '';
+        let userTrace = []; // Almacena el trazo del usuario
+
         const gameCanvas = document.getElementById('game-canvas');
         const gameCtx = gameCanvas.getContext('2d');
+        const needleMarker = document.getElementById('needle-marker');
+        const scene = document.querySelector('a-scene');
+        const crackImg=document.getElementById("crack-img"),timerElement=document.getElementById("timer"),overlay=document.getElementById("overlay");
         
         function startGame(shape) {
             currentShape = shape;
+            userTrace = []; // Limpia el trazo anterior
             overlay.style.display = 'none';
             document.getElementById('game-ui').style.display = 'flex';
+            crackImg.style.display = 'none';
             
             setTimeout(() => {
                 const containerSize = gameCanvas.offsetWidth;
                 gameCanvas.width = containerSize;
                 gameCanvas.height = containerSize;
-                
-                // Dibuja la forma inicial
-                drawShape(currentShape, gameCtx, containerSize);
-
+                timeLeft = 60;
+                timerElement.textContent = timeLeft;
                 gameActive = true;
-                // No iniciamos el timer para la prueba
+                timerInterval = setInterval(updateTimer, 1000);
             }, 100);
         }
 
@@ -86,30 +91,77 @@ ctx.closePath();break;case"umbrella":const h=radius*.7,b=radius*.2;ctx.arc(cente
 ctx.stroke()
         }
         
-        // ▼▼▼ FUNCIÓN DE RENDER LOOP MODIFICADA PARA LA PRUEBA ▼▼▼
-        function renderLoop() {
-            requestAnimationFrame(renderLoop);
-            if (!gameActive) return;
+        scene.addEventListener('render-target-loaded', function () {
+            function renderLoop() {
+                requestAnimationFrame(renderLoop);
+                if (!gameActive) return;
 
-            const canvasSize = gameCanvas.width;
-            // Limpiamos y redibujamos la forma base
-            gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-            drawShape(currentShape, gameCtx, canvasSize);
+                const canvasSize = gameCanvas.width;
+                gameCtx.clearRect(0, 0, canvasSize, canvasSize);
+                drawShape(currentShape, gameCtx, canvasSize);
 
-            // TEST: Dibujar un punto azul fijo en la esquina superior izquierda del área de la figura
-            const testX = canvasSize * 0.25;
-            const testY = canvasSize * 0.25;
-            
-            gameCtx.fillStyle = 'blue';
-            gameCtx.beginPath();
-            gameCtx.arc(testX, testY, 20, 0, Math.PI * 2); // Círculo azul de radio 20
-            gameCtx.fill();
+                // Dibuja el trazo que el usuario ha hecho
+                gameCtx.strokeStyle = 'rgba(255, 99, 71, 0.7)'; // Color tomate
+                gameCtx.lineWidth = 15;
+                gameCtx.beginPath();
+                userTrace.forEach(p => gameCtx.lineTo(p.x, p.y));
+                gameCtx.stroke();
+
+                if (needleMarker.object3D.visible) {
+                    const screenPos = getScreenPosition(needleMarker.object3D);
+                    
+                    if (isWithinBounds(screenPos)) {
+                        checkCut(screenPos.x, screenPos.y);
+                    }
+                }
+            }
+            renderLoop();
+        });
+        
+        // ▼▼▼ FUNCIÓN DE COORDENADAS CORREGIDA Y PRECISA ▼▼▼
+        function getScreenPosition(object3D) {
+            const vector = new THREE.Vector3();
+            const aframeCanvas = scene.renderer.domElement;
+
+            object3D.updateMatrixWorld();
+            vector.setFromMatrixPosition(object3D.matrixWorld);
+            vector.project(scene.camera);
+
+            const screenX = (vector.x + 1) * aframeCanvas.offsetWidth / 2;
+            const screenY = (1 - vector.y) * aframeCanvas.offsetHeight / 2;
+
+            const gameRect = gameCanvas.getBoundingClientRect();
+
+            const finalX = screenX - gameRect.left;
+            const finalY = screenY - gameRect.top;
+
+            return { x: finalX, y: finalY };
         }
 
-        // Inicia el bucle de renderizado inmediatamente
-        renderLoop();
+        function isWithinBounds(pos) {
+            return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height;
+        }
+
+        function checkCut(x, y) {
+            if (!gameActive) return;
+            
+            const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
+            let isOnPath = pixelData[3] > 128;
+
+            if (isOnPath) {
+                // Si está en el camino, añade el punto al trazo del usuario
+                userTrace.push({x: x, y: y});
+            } else {
+                endGame(false);
+            }
+        }
         
-        // El resto de las funciones no se usarán en esta prueba
+        function updateTimer() { timeLeft--; timerElement.textContent = timeLeft; if (timeLeft <= 0) { endGame(false); } }
+
+        function endGame(isWin) {
+            if(!gameActive)return;gameActive=!1;clearInterval(timerInterval);const h1=overlay.querySelector("h1"),p=overlay.querySelector("p");if(isWin){h1.textContent="¡Felicidades!";p.textContent="Has cortado la forma a la perfección."}else{crackImg.style.display="block";h1.textContent="¡Has Perdido!";p.textContent="Te has salido de la línea."}
+overlay.querySelector("#shape-selector").innerHTML='<button onclick="window.location.reload()">Jugar de Nuevo</button>';overlay.style.display="flex"
+        }
     </script>
 </body>
 </html>
