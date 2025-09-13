@@ -5,7 +5,7 @@
     <title>Prueba de Seguimiento de Manos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; font-family: sans-serif; background-color: #222; }
+        body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container {
             position: relative;
             width: 100vw;
@@ -23,7 +23,36 @@
             max-height: 100%;
             border-radius: 10px;
         }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+         h1 { font-size: 2em; margin-bottom: 20px; }
+         button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+         }
         #loading {
+            display: none; /* Oculto por defecto */
             position: absolute;
             top: 50%;
             left: 50%;
@@ -43,6 +72,12 @@
 </head>
 
 <body>
+    <div id="overlay">
+        <h1>Prueba de Seguimiento de Manos</h1>
+        <p>Presiona el botón para iniciar la cámara.</p>
+        <button id="startButton">Iniciar Detección</button>
+    </div>
+
     <div id="container">
         <video id="webcam" style="display: none;"></video>
         <canvas id="outputCanvas"></canvas>
@@ -50,13 +85,19 @@
     </div>
 
     <script>
+        const startButton = document.getElementById('startButton');
+        const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
         const canvasElement = document.getElementById('outputCanvas');
         const canvasCtx = canvasElement.getContext('2d');
         const loadingElement = document.getElementById('loading');
 
+        // La función que se ejecuta cuando se detectan manos
         function onResults(results) {
-            loadingElement.style.display = 'none';
+            // La primera vez que tenemos un resultado, ocultamos el mensaje de carga
+            if (loadingElement.style.display !== 'none') {
+                loadingElement.style.display = 'none';
+            }
 
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
@@ -67,37 +108,48 @@
 
             if (results.multiHandLandmarks) {
                 for (const landmarks of results.multiHandLandmarks) {
-                    // Dibuja las conexiones de los dedos (el esqueleto)
                     drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                    // Dibuja los puntos (los nudillos)
                     drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
                 }
             }
             canvasCtx.restore();
         }
+        
+        // Función principal que inicia todo
+        function startApp() {
+            // Ocultar el overlay y mostrar la carga
+            overlay.style.display = 'none';
+            loadingElement.style.display = 'block';
 
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-        
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-        
-        hands.onResults(onResults);
+            // Configuración de MediaPipe Hands
+            const hands = new Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+            
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onResults);
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({ image: videoElement });
-            },
-            width: 1280,
-            height: 720
-        });
-        
-        camera.start();
+            // Configuración de la cámara
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 1280,
+                height: 720
+            });
+            
+            // Iniciar la cámara
+            camera.start();
+        }
+
+        // Asignar la función de inicio al botón
+        startButton.addEventListener('click', startApp);
 
     </script>
 </body>
