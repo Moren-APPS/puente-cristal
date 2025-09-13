@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Prueba de Seguimiento de Manos</title>
+    <title>MediaPipe Hands - Official Demo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -37,10 +37,8 @@
             align-items: center;
             text-align: center;
             z-index: 10;
-            padding: 20px;
-            box-sizing: border-box;
         }
-         h1 { font-size: 2em; margin-bottom: 20px; }
+         h1 { font-size: 1.5em; margin-bottom: 20px; }
          button {
             padding: 15px 30px;
             font-size: 1.2em;
@@ -52,7 +50,7 @@
             font-weight: bold;
          }
         #loading {
-            display: none; /* Oculto por defecto */
+            display: none;
             position: absolute;
             top: 50%;
             left: 50%;
@@ -64,7 +62,7 @@
             border-radius: 10px;
         }
     </style>
-    <!-- Importar las librerías de MediaPipe -->
+    <!-- Importar las librerías oficiales de MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -72,6 +70,7 @@
 </head>
 
 <body>
+    <!-- Esta pantalla de inicio es necesaria por las reglas de seguridad de los navegadores modernos -->
     <div id="overlay">
         <h1>Prueba de Seguimiento de Manos</h1>
         <p>Presiona el botón para iniciar la cámara.</p>
@@ -92,9 +91,7 @@
         const canvasCtx = canvasElement.getContext('2d');
         const loadingElement = document.getElementById('loading');
 
-        // La función que se ejecuta cuando se detectan manos
         function onResults(results) {
-            // La primera vez que tenemos un resultado, ocultamos el mensaje de carga
             if (loadingElement.style.display !== 'none') {
                 loadingElement.style.display = 'none';
             }
@@ -115,13 +112,10 @@
             canvasCtx.restore();
         }
         
-        // Función principal que inicia todo
         function startApp() {
-            // Ocultar el overlay y mostrar la carga
             overlay.style.display = 'none';
             loadingElement.style.display = 'block';
 
-            // Configuración de MediaPipe Hands
             const hands = new Hands({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }});
@@ -135,7 +129,6 @@
             
             hands.onResults(onResults);
 
-            // Configuración de la cámara
             const camera = new Camera(videoElement, {
                 onFrame: async () => {
                     await hands.send({ image: videoElement });
@@ -144,13 +137,10 @@
                 height: 720
             });
             
-            // Iniciar la cámara
             camera.start();
         }
 
-        // Asignar la función de inicio al botón
         startButton.addEventListener('click', startApp);
-
     </script>
 </body>
 </html>
