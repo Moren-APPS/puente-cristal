@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR (Un Canvas)</title>
+    <title>Reto Dalgona AR (Con Luces)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -10,7 +10,7 @@
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; }
         #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; display: flex; justify-content: center; align-items: center; pointer-events: none; }
         .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
-        #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; } /* Un solo canvas */
+        #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #crack-img { pointer-events: none; display: none; }
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 200; padding: 20px; box-sizing: border-box; }
@@ -46,9 +46,12 @@
         arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
         vr-mode-ui="enabled: false"
         renderer="alpha: true; antialias: true;">
+        
+        <a-entity light="type: ambient; color: #BBB"></a-entity>
+        <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1"></a-entity>
         <a-marker preset="hiro" id="needle-marker">
-            <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver;"></a-cone>
-        </a-marker>
+            <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver; metalness: 0.8;"></a-cone>
+            </a-marker>
         <a-entity camera></a-entity>
     </a-scene>
 
@@ -58,15 +61,13 @@
         let timeLeft = 60;
         let currentShape = '';
         
-        // ▼▼▼ AHORA SOLO HAY UN CONTEXTO DE CANVAS ▼▼▼
         const gameCanvas = document.getElementById('game-canvas');
         const gameCtx = gameCanvas.getContext('2d');
         
         const needleMarker = document.getElementById('needle-marker');
         const scene = document.querySelector('a-scene');
-        const crackImg = document.getElementById('crack-img');
-        const timerElement = document.getElementById('timer');
-        const overlay = document.getElementById('overlay');
+        // ... (el resto de las constantes sin cambios) ...
+        const crackImg=document.getElementById("crack-img"),timerElement=document.getElementById("timer"),overlay=document.getElementById("overlay");
         
         function startGame(shape) {
             currentShape = shape;
@@ -79,6 +80,11 @@
                 gameCanvas.width = containerSize;
                 gameCanvas.height = containerSize;
                 
+                // ▼▼▼ DIBUJO INICIAL GARANTIZADO ▼▼▼
+                // Dibuja la forma una vez aquí para asegurar que aparezca
+                drawShape(currentShape, gameCtx, containerSize);
+                // ▲▲▲ FIN DE DIBUJO INICIAL ▲▲▲
+
                 timeLeft = 60;
                 timerElement.textContent = timeLeft;
                 gameActive = true;
@@ -87,16 +93,10 @@
         }
 
         function drawShape(shape, ctx, size) {
-            const centerX = size / 2;
-            const centerY = size / 2;
-            const radius = size * 0.35;
-            ctx.strokeStyle = "rgba(255, 199, 102, 1)";
-            ctx.lineWidth = 20;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            switch(shape){case'triangle':ctx.moveTo(centerX+radius*Math.cos(0),centerY+radius*Math.sin(0));for(let i=1;i<=3;i++){ctx.lineTo(centerX+radius*Math.cos(i*2*Math.PI/3),centerY+radius*Math.sin(i*2*Math.PI/3))}break;case'star':const r=radius,ir=r/2.5;ctx.moveTo(centerX,centerY-r);for(let i=0;i<5;i++){const a=Math.PI/2+(i*2*Math.PI/5);ctx.lineTo(centerX+Math.cos(a-Math.PI/5)*ir,centerY-Math.sin(a-Math.PI/5)*ir);ctx.lineTo(centerX+Math.cos(a)*r,centerY-Math.sin(a)*r)}
-ctx.closePath();break;case'umbrella':const h=radius*0.7,b=radius*0.2;ctx.arc(centerX,centerY,radius,Math.PI,0);ctx.lineTo(centerX+radius,centerY);ctx.lineTo(centerX,centerY);ctx.lineTo(centerX,centerY+h);ctx.arc(centerX-b,centerY+h,b,0,Math.PI/2,false);break}
-            ctx.stroke();
+            // ... (código de dibujo de formas sin cambios) ...
+            const centerX=size/2,centerY=size/2,radius=size*.35;ctx.strokeStyle="rgba(255, 199, 102, 1)";ctx.lineWidth=20;ctx.lineCap="round";ctx.beginPath();switch(shape){case"triangle":ctx.moveTo(centerX+radius*Math.cos(0),centerY+radius*Math.sin(0));for(let i=1;i<=3;i++){ctx.lineTo(centerX+radius*Math.cos(i*2*Math.PI/3),centerY+radius*Math.sin(i*2*Math.PI/3))}break;case"star":const r=radius,ir=r/2.5;ctx.moveTo(centerX,centerY-r);for(let i=0;i<5;i++){const a=Math.PI/2+(i*2*Math.PI/5);ctx.lineTo(centerX+Math.cos(a-Math.PI/5)*ir,centerY-Math.sin(a-Math.PI/5)*ir);ctx.lineTo(centerX+Math.cos(a)*r,centerY-Math.sin(a)*r)}
+ctx.closePath();break;case"umbrella":const h=radius*.7,b=radius*.2;ctx.arc(centerX,centerY,radius,Math.PI,0);ctx.lineTo(centerX+radius,centerY);ctx.lineTo(centerX,centerY);ctx.lineTo(centerX,centerY+h);ctx.arc(centerX-b,centerY+h,b,0,Math.PI/2,!1);break}
+ctx.stroke()
         }
         
         scene.addEventListener('render-target-loaded', function () {
@@ -104,18 +104,13 @@ ctx.closePath();break;case'umbrella':const h=radius*0.7,b=radius*0.2;ctx.arc(cen
                 requestAnimationFrame(renderLoop);
                 if (!gameActive) return;
 
-                // ▼▼▼ LÓGICA DE DIBUJO CENTRALIZADA ▼▼▼
                 const canvasSize = gameCanvas.width;
-                // 1. Limpiar todo el canvas
                 gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-                
-                // 2. Volver a dibujar la forma de la galleta
                 drawShape(currentShape, gameCtx, canvasSize);
 
                 if (needleMarker.object3D.visible) {
                     const screenPos = getScreenPosition(needleMarker.object3D);
                     
-                    // 3. Dibujar el punto de depuración cian
                     gameCtx.fillStyle = 'cyan';
                     gameCtx.beginPath();
                     gameCtx.arc(screenPos.x, screenPos.y, 15, 0, Math.PI * 2);
@@ -130,15 +125,8 @@ ctx.closePath();break;case'umbrella':const h=radius*0.7,b=radius*0.2;ctx.arc(cen
         });
         
         function getScreenPosition(object3D) {
-            const vector = new THREE.Vector3();
-            object3D.updateMatrixWorld();
-            vector.setFromMatrixPosition(object3D.matrixWorld);
-            vector.project(scene.camera);
-            const gameContainer = document.querySelector('.game-container');
-            const rect = gameContainer.getBoundingClientRect();
-            const x = ((vector.x + 1) / 2) * rect.width;
-            const y = (-(vector.y - 1) / 2) * rect.height;
-            return { x, y };
+            // ... (función sin cambios) ...
+            const vector=new THREE.Vector3;object3D.updateMatrixWorld();vector.setFromMatrixPosition(object3D.matrixWorld);vector.project(scene.camera);const gameContainer=document.querySelector(".game-container"),rect=gameContainer.getBoundingClientRect();const x=(vector.x+1)/2*rect.width,y=-(vector.y-1)/2*rect.height;return{x:x,y:y}
         }
 
         function isWithinBounds(pos) {
@@ -146,28 +134,15 @@ ctx.closePath();break;case'umbrella':const h=radius*0.7,b=radius*0.2;ctx.arc(cen
         }
 
         function checkCut(x, y) {
-            if (!gameActive) return;
-            // Usamos el mismo canvas para leer el píxel
-            const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            let isOnPath = pixelData[3] > 128; // Revisa si el píxel es opaco
-
-            if (!isOnPath) {
-                endGame(false);
-            }
+            // ... (función sin cambios) ...
+            if(!gameActive)return;const pixelData=gameCtx.getImageData(x,y,1,1).data;let isOnPath=pixelData[3]>128;if(!isOnPath){endGame(!1)}
         }
         
-        // Funciones updateTimer y endGame sin cambios...
         function updateTimer() { timeLeft--; timerElement.textContent = timeLeft; if (timeLeft <= 0) { endGame(false); } }
         function endGame(isWin) {
-            if (!gameActive) return;
-            gameActive = false;
-            clearInterval(timerInterval);
-            const h1 = overlay.querySelector('h1');
-            const p = overlay.querySelector('p');
-            if (isWin) { h1.textContent = "¡Felicidades!"; p.textContent = "Has cortado la forma a la perfección."; }
-            else { crackImg.style.display = 'block'; h1.textContent = "¡Has Perdido!"; p.textContent = "Te has salido de la línea."; }
-            overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
-            overlay.style.display = 'flex';
+            // ... (función sin cambios) ...
+            if(!gameActive)return;gameActive=!1;clearInterval(timerInterval);const h1=overlay.querySelector("h1"),p=overlay.querySelector("p");if(isWin){h1.textContent="¡Felicidades!";p.textContent="Has cortado la forma a la perfección."}else{crackImg.style.display="block";h1.textContent="¡Has Perdido!";p.textContent="Te has salido de la línea."}
+overlay.querySelector("#shape-selector").innerHTML='<button onclick="window.location.reload()">Jugar de Nuevo</button>';overlay.style.display="flex"
         }
     </script>
 </body>
