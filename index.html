@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR - ¡Funcional!</title>
+    <title>Reto Dalgona AR - Versión Punto 2D</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -13,7 +13,7 @@
         #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #crack-img { pointer-events: none; display: none; }
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 200; padding: 20px; box-sizing: border-box; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 200; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; }
         h1 { font-size: 2.5em; color: #FFA500; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; }
@@ -24,8 +24,8 @@
     <div id="overlay">
         <div class="content">
             <h1>Reto Dalgona AR</h1>
-            <p>Pega el marcador "Hiro" en la punta de un lápiz.<br>Elige una forma para empezar.</p>
-            <div id="shape-selector" style="margin-bottom: 20px;">
+            <p>Usa el marcador "Hiro" para mover el punto.<br>Elige una forma para empezar.</p>
+            <div id="shape-selector">
                 <button onclick="startGame('triangle')">Triángulo</button>
                 <button onclick="startGame('star')">Estrella</button>
                 <button onclick="startGame('umbrella')">Paraguas</button>
@@ -46,11 +46,8 @@
         arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
         vr-mode-ui="enabled: false"
         renderer="alpha: true; antialias: true;">
-        <a-entity light="type: ambient; color: #BBB"></a-entity>
-        <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1"></a-entity>
         <a-marker preset="hiro" id="needle-marker">
-            <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver; metalness: 0.8;"></a-cone>
-        </a-marker>
+            </a-marker>
         <a-entity camera></a-entity>
     </a-scene>
 
@@ -59,17 +56,19 @@
         let timerInterval;
         let timeLeft = 60;
         let currentShape = '';
-        let userTrace = []; // Almacena el trazo del usuario
+        let userTrace = []; // Almacena los puntos del trazo del usuario
 
         const gameCanvas = document.getElementById('game-canvas');
         const gameCtx = gameCanvas.getContext('2d');
         const needleMarker = document.getElementById('needle-marker');
         const scene = document.querySelector('a-scene');
-        const crackImg=document.getElementById("crack-img"),timerElement=document.getElementById("timer"),overlay=document.getElementById("overlay");
+        const crackImg = document.getElementById('crack-img');
+        const timerElement = document.getElementById('timer');
+        const overlay = document.getElementById('overlay');
         
         function startGame(shape) {
             currentShape = shape;
-            userTrace = []; // Limpia el trazo anterior
+            userTrace = [];
             overlay.style.display = 'none';
             document.getElementById('game-ui').style.display = 'flex';
             crackImg.style.display = 'none';
@@ -86,9 +85,17 @@
         }
 
         function drawShape(shape, ctx, size) {
-             const centerX=size/2,centerY=size/2,radius=size*.35;ctx.strokeStyle="rgba(255, 199, 102, 1)";ctx.lineWidth=20;ctx.lineCap="round";ctx.beginPath();switch(shape){case"triangle":ctx.moveTo(centerX+radius*Math.cos(0),centerY+radius*Math.sin(0));for(let i=1;i<=3;i++){ctx.lineTo(centerX+radius*Math.cos(i*2*Math.PI/3),centerY+radius*Math.sin(i*2*Math.PI/3))}break;case"star":const r=radius,ir=r/2.5;ctx.moveTo(centerX,centerY-r);for(let i=0;i<5;i++){const a=Math.PI/2+(i*2*Math.PI/5);ctx.lineTo(centerX+Math.cos(a-Math.PI/5)*ir,centerY-Math.sin(a-Math.PI/5)*ir);ctx.lineTo(centerX+Math.cos(a)*r,centerY-Math.sin(a)*r)}
-ctx.closePath();break;case"umbrella":const h=radius*.7,b=radius*.2;ctx.arc(centerX,centerY,radius,Math.PI,0);ctx.lineTo(centerX+radius,centerY);ctx.lineTo(centerX,centerY);ctx.lineTo(centerX,centerY+h);ctx.arc(centerX-b,centerY+h,b,0,Math.PI/2,!1);break}
-ctx.stroke()
+            const centerX = size / 2, centerY = size / 2, radius = size * 0.35;
+            ctx.strokeStyle = "rgba(255, 199, 102, 1)";
+            ctx.lineWidth = 20;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            switch (shape) {
+                case "triangle": ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0)); for (let i = 1; i <= 3; i++) { ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3)) } break;
+                case "star": const r = radius, ir = r / 2.5; ctx.moveTo(centerX, centerY - r); for (let i = 0; i < 5; i++) { const a = Math.PI / 2 + (i * 2 * Math.PI / 5); ctx.lineTo(centerX + Math.cos(a - Math.PI / 5) * ir, centerY - Math.sin(a - Math.PI / 5) * ir); ctx.lineTo(centerX + Math.cos(a) * r, centerY - Math.sin(a) * r) } ctx.closePath(); break;
+                case "umbrella": const h = radius * 0.7, b = radius * 0.2; ctx.arc(centerX, centerY, radius, Math.PI, 0); ctx.lineTo(centerX + radius, centerY); ctx.lineTo(centerX, centerY); ctx.lineTo(centerX, centerY + h); ctx.arc(centerX - b, centerY + h, b, 0, Math.PI / 2, !1); break;
+            }
+            ctx.stroke();
         }
         
         scene.addEventListener('render-target-loaded', function () {
@@ -97,19 +104,35 @@ ctx.stroke()
                 if (!gameActive) return;
 
                 const canvasSize = gameCanvas.width;
+                // 1. Limpiamos el lienzo
                 gameCtx.clearRect(0, 0, canvasSize, canvasSize);
+                
+                // 2. Dibujamos la forma de la galleta
                 drawShape(currentShape, gameCtx, canvasSize);
 
-                // Dibuja el trazo que el usuario ha hecho
-                gameCtx.strokeStyle = 'rgba(255, 99, 71, 0.7)'; // Color tomate
-                gameCtx.lineWidth = 15;
-                gameCtx.beginPath();
-                userTrace.forEach(p => gameCtx.lineTo(p.x, p.y));
-                gameCtx.stroke();
+                // 3. Dibujamos el trazo que el usuario ha hecho
+                if (userTrace.length > 1) {
+                    gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)'; // Color rojo para el trazo
+                    gameCtx.lineWidth = 15;
+                    gameCtx.lineCap = "round";
+                    gameCtx.beginPath();
+                    gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
+                    for(let i = 1; i < userTrace.length; i++) {
+                        gameCtx.lineTo(userTrace[i].x, userTrace[i].y);
+                    }
+                    gameCtx.stroke();
+                }
 
                 if (needleMarker.object3D.visible) {
                     const screenPos = getScreenPosition(needleMarker.object3D);
                     
+                    // 4. DIBUJAMOS EL CURSOR (EL PUNTO 2D)
+                    gameCtx.fillStyle = '#00FFFF'; // Color Cian para el punto
+                    gameCtx.beginPath();
+                    gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
+                    gameCtx.fill();
+                    
+                    // 5. Verificamos si está sobre el camino
                     if (isWithinBounds(screenPos)) {
                         checkCut(screenPos.x, screenPos.y);
                     }
@@ -118,24 +141,16 @@ ctx.stroke()
             renderLoop();
         });
         
-        // ▼▼▼ FUNCIÓN DE COORDENADAS CORREGIDA Y PRECISA ▼▼▼
         function getScreenPosition(object3D) {
             const vector = new THREE.Vector3();
             const aframeCanvas = scene.renderer.domElement;
-
             object3D.updateMatrixWorld();
             vector.setFromMatrixPosition(object3D.matrixWorld);
             vector.project(scene.camera);
-
             const screenX = (vector.x + 1) * aframeCanvas.offsetWidth / 2;
             const screenY = (1 - vector.y) * aframeCanvas.offsetHeight / 2;
-
             const gameRect = gameCanvas.getBoundingClientRect();
-
-            const finalX = screenX - gameRect.left;
-            const finalY = screenY - gameRect.top;
-
-            return { x: finalX, y: finalY };
+            return { x: screenX - gameRect.left, y: screenY - gameRect.top };
         }
 
         function isWithinBounds(pos) {
@@ -144,23 +159,33 @@ ctx.stroke()
 
         function checkCut(x, y) {
             if (!gameActive) return;
-            
             const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            let isOnPath = pixelData[3] > 128;
+            let isOnPath = pixelData[3] > 128; // Revisa si el píxel NO es transparente
 
             if (isOnPath) {
-                // Si está en el camino, añade el punto al trazo del usuario
                 userTrace.push({x: x, y: y});
             } else {
                 endGame(false);
             }
         }
         
-        function updateTimer() { timeLeft--; timerElement.textContent = timeLeft; if (timeLeft <= 0) { endGame(false); } }
+        function updateTimer() { if (--timeLeft <= 0) endGame(false); timerElement.textContent = timeLeft; }
 
         function endGame(isWin) {
-            if(!gameActive)return;gameActive=!1;clearInterval(timerInterval);const h1=overlay.querySelector("h1"),p=overlay.querySelector("p");if(isWin){h1.textContent="¡Felicidades!";p.textContent="Has cortado la forma a la perfección."}else{crackImg.style.display="block";h1.textContent="¡Has Perdido!";p.textContent="Te has salido de la línea."}
-overlay.querySelector("#shape-selector").innerHTML='<button onclick="window.location.reload()">Jugar de Nuevo</button>';overlay.style.display="flex"
+            if (!gameActive) return;
+            gameActive = false;
+            clearInterval(timerInterval);
+            const h1 = overlay.querySelector('h1'), p = overlay.querySelector('p');
+            if (isWin) {
+                h1.textContent = "¡Felicidades!";
+                p.textContent = "Has cortado la forma a la perfección.";
+            } else {
+                crackImg.style.display = 'block';
+                h1.textContent = "¡Has Perdido!";
+                p.textContent = "Te has salido de la línea.";
+            }
+            overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
+            overlay.style.display = 'flex';
         }
     </script>
 </body>
