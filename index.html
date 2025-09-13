@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR - Versión Final</title>
+    <title>Reto Dalgona AR - MODO DIAGNÓSTICO</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
@@ -12,162 +12,118 @@
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; }
         h1 { font-size: 2.5em; color: #FFA500; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; }
-
-        /* ▼▼▼ CSS CORREGIDO PARA UN CENTRADO PRECISO ▼▼▼ */
-        .game-container {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            width: 90vw;
-            height: 90vw;
-            max-width: 500px;
-            max-height: 500px;
-            z-index: 100;
-            pointer-events: none;
-        }
-        /* ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲ */
-
+        .game-container { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; z-index: 100; pointer-events: none; }
         #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #crack-img { pointer-events: none; display: none; }
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 110; }
+        
+        /* ▼▼▼ CUADRO DE DIAGNÓSTICO ▼▼▼ */
+        #debug-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 999;
+            pointer-events: none; /* Para que no interfiera */
+        }
     </style>
 </head>
 <body style="margin: 0px; overflow: hidden;">
 
-    <div id="overlay">
-        <div class="content">
-            <h1>Reto Dalgona AR</h1>
-            <p>Usa el marcador "Hiro" para mover el punto.<br>Elige una forma para empezar.</p>
-            <div id="shape-selector">
-                <button onclick="startGame('triangle')">Triángulo</button>
-                <button onclick="startGame('star')">Estrella</button>
-                <button onclick="startGame('umbrella')">Paraguas</button>
-            </div>
-        </div>
-    </div>
-    
-    <div class="game-container" id="game-container" style="display:none;">
-        <canvas id="game-canvas"></canvas>
-        <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
-    </div>
+    <div id="overlay"><div class="content"><h1>Reto Dalgona AR</h1><p>Usa el marcador "Hiro" para mover el punto.<br>Elige una forma para empezar.</p><div id="shape-selector"><button onclick="startGame('triangle')">Triángulo</button><button onclick="startGame('star')">Estrella</button><button onclick="startGame('umbrella')">Paraguas</button></div></div></div>
+    <div class="game-container" id="game-container" style="display:none;"><canvas id="game-canvas"></canvas><img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie"></div>
     <div id="timer">60</div>
+    
+    <div id="debug-info">Esperando datos...</div>
 
-    <a-scene 
-        embedded 
-        arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
-        vr-mode-ui="enabled: false"
-        renderer="alpha: true; antialias: true;">
+    <a-scene embedded arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true;">
         <a-marker preset="hiro" id="needle-marker"></a-marker>
         <a-entity camera></a-entity>
     </a-scene>
 
     <script>
+        // Declaraciones de variables sin cambios
         let gameActive = false, timerInterval, timeLeft = 60, currentShape = '', userTrace = [];
         const gameCanvas = document.getElementById('game-canvas'), gameCtx = gameCanvas.getContext('2d');
         const needleMarker = document.getElementById('needle-marker'), scene = document.querySelector('a-scene');
         const crackImg = document.getElementById('crack-img'), timerElement = document.getElementById('timer');
         const overlay = document.getElementById('overlay'), gameContainer = document.getElementById('game-container');
-        
-        function startGame(shape) {
-            currentShape = shape;
-            userTrace = [];
-            overlay.style.display = 'none';
-            gameContainer.style.display = 'block';
-            crackImg.style.display = 'none';
-            
-            setTimeout(() => {
-                const containerSize = gameCanvas.offsetWidth;
-                if (containerSize === 0) return;
-                gameCanvas.width = containerSize;
-                gameCanvas.height = containerSize;
-                timeLeft = 60;
-                timerElement.textContent = timeLeft;
-                gameActive = true;
-                timerInterval = setInterval(updateTimer, 1000);
-            }, 100);
-        }
+        const debugInfo = document.getElementById('debug-info'); // Variable para el cuadro de diagnóstico
 
-        function drawShape(shape, ctx, size) {
-            const centerX = size / 2, centerY = size / 2, radius = size * 0.35;
-            ctx.strokeStyle = "rgba(255, 199, 102, 1)";
-            ctx.lineWidth = 20;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            switch (shape) {
-                case "triangle": ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0)); for (let i = 1; i <= 3; i++) { ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3)) } break;
-                case "star": const r = radius, ir = r / 2.5; ctx.moveTo(centerX, centerY - r); for (let i = 0; i < 5; i++) { const a = Math.PI / 2 + (i * 2 * Math.PI / 5); ctx.lineTo(centerX + Math.cos(a - Math.PI / 5) * ir, centerY - Math.sin(a - Math.PI / 5) * ir); ctx.lineTo(centerX + Math.cos(a) * r, centerY - Math.sin(a) * r) } ctx.closePath(); break;
-                case "umbrella": const h = radius * 0.7, b = radius * 0.2; ctx.arc(centerX, centerY, radius, Math.PI, 0); ctx.lineTo(centerX + radius, centerY); ctx.lineTo(centerX, centerY); ctx.lineTo(centerX, centerY + h); ctx.arc(centerX - b, centerY + h, b, 0, Math.PI / 2, false); break;
-            }
-            ctx.stroke();
-        }
-        
+        // Funciones startGame y drawShape sin cambios
+        function startGame(shape){currentShape=shape;userTrace=[];overlay.style.display="none";gameContainer.style.display="block";crackImg.style.display="none";setTimeout(()=>{const e=gameCanvas.offsetWidth;if(e===0)return;gameCanvas.width=e;gameCanvas.height=e;timeLeft=60;timerElement.textContent=timeLeft;gameActive=true;timerInterval=setInterval(updateTimer,1e3)},100)}
+        function drawShape(e,t,n){const o=n/2,a=n/2,r=n*.35;t.strokeStyle="rgba(255, 199, 102, 1)";t.lineWidth=20;t.lineCap="round";t.beginPath();switch(e){case"triangle":t.moveTo(o+r*Math.cos(0),a+r*Math.sin(0));for(let e=1;e<=3;e++){t.lineTo(o+r*Math.cos(e*2*Math.PI/3),a+r*Math.sin(e*2*Math.PI/3))}break;case"star":const e=r,c=e/2.5;t.moveTo(o,a-e);for(let n=0;n<5;n++){const s=Math.PI/2+n*2*Math.PI/5;t.lineTo(o+Math.cos(s-Math.PI/5)*c,a-Math.sin(s-Math.PI/5)*c);t.lineTo(o+Math.cos(s)*e,a-Math.sin(s)*e)}t.closePath();break;case"umbrella":const i=r*.7,l=r*.2;t.arc(o,a,r,Math.PI,0);t.lineTo(o+r,a);t.lineTo(o,a);t.lineTo(o,a+i);t.arc(o-l,a+i,l,0,Math.PI/2,!1);break}t.stroke()}
+
         function renderLoop() {
             requestAnimationFrame(renderLoop);
             if (!gameActive) return;
-            const canvasSize = gameCanvas.width;
-            gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-            drawShape(currentShape, gameCtx, canvasSize);
-            if (userTrace.length > 1) {
-                gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
-                gameCtx.lineWidth = 15;
-                gameCtx.lineCap = "round";
-                gameCtx.beginPath();
-                gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
-                for (let i = 1; i < userTrace.length; i++) { gameCtx.lineTo(userTrace[i].x, userTrace[i].y); }
-                gameCtx.stroke();
-            }
+            // Lógica de dibujo sin cambios
+            const canvasSize=gameCanvas.width;gameCtx.clearRect(0,0,canvasSize,canvasSize);drawShape(currentShape,gameCtx,canvasSize);if(userTrace.length>1){gameCtx.strokeStyle="rgba(255, 80, 80, 0.8)";gameCtx.lineWidth=15;gameCtx.lineCap="round";gameCtx.beginPath();gameCtx.moveTo(userTrace[0].x,userTrace[0].y);for(let e=1;e<userTrace.length;e++){gameCtx.lineTo(userTrace[e].x,userTrace[e].y)}gameCtx.stroke()}
+
             if (needleMarker.object3D.visible) {
-                const screenPos = getScreenPosition(needleMarker.object3D);
+                // ▼▼▼ LÓGICA DE DIAGNÓSTICO ▼▼▼
+                const { finalPos, debugData } = getScreenPosition(needleMarker.object3D);
+
+                // Actualiza el cuadro de texto con los datos
+                debugInfo.innerHTML = `
+                    --- DATOS DE POSICIÓN ---<br>
+                    Marker(x,y): ${debugData.normX.toFixed(2)}, ${debugData.normY.toFixed(2)}<br>
+                    Screen(x,y): ${Math.round(debugData.screenX)}, ${Math.round(debugData.screenY)}<br>
+                    CanvasRect(L,T): ${Math.round(debugData.gameRect.left)}, ${Math.round(debugData.gameRect.top)}<br>
+                    <strong style="color:cyan;">Final(x,y): ${Math.round(finalPos.x)}, ${Math.round(finalPos.y)}</strong>
+                `;
+                
+                // Dibuja el punto/cursor usando la posición final
                 gameCtx.fillStyle = '#00FFFF';
                 gameCtx.beginPath();
-                gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
+                gameCtx.arc(finalPos.x, finalPos.y, 10, 0, Math.PI * 2);
                 gameCtx.fill();
-                if (isWithinBounds(screenPos)) { checkCut(screenPos.x, screenPos.y); }
+                
+                if (isWithinBounds(finalPos)) { checkCut(finalPos.x, finalPos.y); }
+
+            } else {
+                debugInfo.innerHTML = "Marcador 'Hiro' NO visible...";
             }
         }
         renderLoop();
         
+        // ▼▼▼ FUNCIÓN DE POSICIÓN MODIFICADA PARA DEVOLVER DATOS DE DEBUG ▼▼▼
         function getScreenPosition(object3D) {
             const vector = new THREE.Vector3();
             const aframeCanvas = scene.renderer.domElement;
             object3D.updateMatrixWorld();
             vector.setFromMatrixPosition(object3D.matrixWorld);
             vector.project(scene.camera);
+            
             const screenX = (vector.x + 1) * aframeCanvas.offsetWidth / 2;
             const screenY = (1 - vector.y) * aframeCanvas.offsetHeight / 2;
+            
             const gameRect = gameCanvas.getBoundingClientRect();
-            return { x: screenX - gameRect.left, y: screenY - gameRect.top };
-        }
+            
+            const finalX = screenX - gameRect.left;
+            const finalY = screenY - gameRect.top;
 
-        function isWithinBounds(pos) { return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height; }
-
-        function checkCut(x, y) {
-            if (!gameActive) return;
-            const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            if (pixelData[3] > 128) {
-                userTrace.push({ x: x, y: y });
-            } else { if (userTrace.length > 5) endGame(false); } // Pequeña tolerancia para no perder al instante
+            return { 
+                finalPos: { x: finalX, y: finalY },
+                debugData: {
+                    normX: vector.x,
+                    normY: vector.y,
+                    screenX: screenX,
+                    screenY: screenY,
+                    gameRect: gameRect
+                }
+            };
         }
         
-        function updateTimer() { if (--timeLeft <= 0) endGame(false); timerElement.textContent = timeLeft; }
-
-        function endGame(isWin) {
-            if (!gameActive) return;
-            gameActive = false;
-            clearInterval(timerInterval);
-            const h1 = overlay.querySelector('h1'), p = overlay.querySelector('p');
-            if (isWin) {
-                h1.textContent = "¡Felicidades!";
-                p.textContent = "Has cortado la forma a la perfección.";
-            } else {
-                crackImg.style.display = 'block';
-                h1.textContent = "¡Has Perdido!";
-                p.textContent = "Te has salido de la línea.";
-            }
-            overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
-            overlay.style.display = 'flex';
-        }
+        // Funciones de lógica de juego sin cambios
+        function isWithinBounds(pos){return pos.x>0&&pos.x<gameCanvas.width&&pos.y>0&&pos.y<gameCanvas.height}
+        function checkCut(e,t){if(!gameActive)return;const n=gameCtx.getImageData(e,t,1,1).data;if(n[3]>128){userTrace.push({x:e,y:t})}else{if(userTrace.length>5)endGame(false)}}
+        function updateTimer(){if(--timeLeft<=0)endGame(!1);timerElement.textContent=timeLeft}
+        function endGame(e){if(!gameActive)return;gameActive=!1;clearInterval(timerInterval);const t=overlay.querySelector("h1"),n=overlay.querySelector("p");if(e){t.textContent="¡Felicidades!";n.textContent="Has cortado la forma a la perfección."}else{crackImg.style.display="block";t.textContent="¡Has Perdido!";n.textContent="Te has salido de la línea."}overlay.querySelector("#shape-selector").innerHTML='<button onclick="window.location.reload()">Jugar de Nuevo</button>';overlay.style.display="flex"}
     </script>
 </body>
 </html>
