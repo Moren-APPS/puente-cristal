@@ -1,169 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR - Versión Final</title>
+    <title>Prueba de Detección de Suelo (WebXR)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; overflow: hidden; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 200; }
-        .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; }
-        h1 { font-size: 2.5em; color: #FFA500; }
-        button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; }
-        .game-container { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; z-index: 100; pointer-events: none; }
-        #game-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #crack-img { pointer-events: none; display: none; }
-        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 110; }
+        body { margin: 0; font-family: sans-serif; background-color: #000; }
+        #ar-button {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border: 1px solid #fff;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.4);
+            color: #fff;
+            font: 18px sans-serif;
+            z-index: 100;
+            cursor: pointer;
+        }
+        #message {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 1.2em;
+            z-index: 5;
+            display: none;
+        }
     </style>
 </head>
-<body style="margin: 0px; overflow: hidden;">
+<body>
+    <div id="message">Mueve tu teléfono lentamente para escanear el suelo...</div>
 
-    <div id="overlay">
-        <div class="content">
-            <h1>Reto Dalgona AR</h1>
-            <p>Usa el marcador "Hiro" para mover el punto.<br>Elige una forma para empezar.</p>
-            <div id="shape-selector">
-                <button onclick="startGame('triangle')">Triángulo</button>
-                <button onclick="startGame('star')">Estrella</button>
-                <button onclick="startGame('umbrella')">Paraguas</button>
-            </div>
-        </div>
-    </div>
-    
-    <div class="game-container" id="game-container" style="display:none;">
-        <canvas id="game-canvas"></canvas>
-        <img id="crack-img" src="https://assets.codepen.io/13471/dalgona-crack.png" alt="Cracked Cookie">
-    </div>
-    <div id="timer">60</div>
+    <script type="importmap">
+        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/" } }
+    </script>
 
-    <a-scene 
-        embedded 
-        arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" 
-        vr-mode-ui="enabled: false"
-        renderer="alpha: true; antialias: true;">
-        <a-marker preset="hiro" id="needle-marker"></a-marker>
-        <a-entity camera></a-entity>
-    </a-scene>
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
 
-    <script>
-        let gameActive = false, timerInterval, timeLeft = 60, currentShape = '', userTrace = [];
-        const gameCanvas = document.getElementById('game-canvas'), gameCtx = gameCanvas.getContext('2d');
-        const needleMarker = document.getElementById('needle-marker'), scene = document.querySelector('a-scene');
-        const crackImg = document.getElementById('crack-img'), timerElement = document.getElementById('timer');
-        const overlay = document.getElementById('overlay'), gameContainer = document.getElementById('game-container');
-        
-        function startGame(shape) {
-            currentShape = shape;
-            userTrace = [];
-            overlay.style.display = 'none';
-            gameContainer.style.display = 'block';
-            crackImg.style.display = 'none';
+        let camera, scene, renderer;
+        let controller, reticle;
+        let hitTestSource = null;
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+            light.position.set(0.5, 1, 0.25);
+            scene.add(light);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+            document.body.appendChild(arButton);
             
-            setTimeout(() => {
-                const containerSize = gameCanvas.offsetWidth;
-                if (containerSize === 0) return;
-                gameCanvas.width = containerSize;
-                gameCanvas.height = containerSize;
-                timeLeft = 60;
-                timerElement.textContent = timeLeft;
-                gameActive = true;
-                timerInterval = setInterval(updateTimer, 1000);
-            }, 100);
+            // Cuando la sesión de AR comienza
+            renderer.xr.addEventListener('sessionstart', async () => {
+                const session = renderer.xr.getSession();
+                document.getElementById('message').style.display = 'block';
+
+                const viewerSpace = await session.requestReferenceSpace('viewer');
+                hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+            });
+
+            // Controlador para el toque en pantalla
+            controller = renderer.xr.getController(0);
+            controller.addEventListener('select', onSelect);
+            scene.add(controller);
+
+            // Retícula (el puntero que se pega al suelo)
+            reticle = new THREE.Mesh(
+                new THREE.RingGeometry(0.05, 0.07, 32).rotateX(-Math.PI / 2),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
+
+            window.addEventListener('resize', onWindowResize);
+            renderer.setAnimationLoop(render);
         }
 
-        function drawShape(shape, ctx, size) {
-            const centerX = size / 2, centerY = size / 2, radius = size * 0.35;
-            ctx.strokeStyle = "rgba(255, 199, 102, 1)";
-            ctx.lineWidth = 20;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            switch (shape) {
-                case "triangle": ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0)); for (let i = 1; i <= 3; i++) { ctx.lineTo(centerX + radius * Math.cos(i * 2 * Math.PI / 3), centerY + radius * Math.sin(i * 2 * Math.PI / 3)) } break;
-                case "star": const r = radius, ir = r / 2.5; ctx.moveTo(centerX, centerY - r); for (let i = 0; i < 5; i++) { const a = Math.PI / 2 + (i * 2 * Math.PI / 5); ctx.lineTo(centerX + Math.cos(a - Math.PI / 5) * ir, centerY - Math.sin(a - Math.PI / 5) * ir); ctx.lineTo(centerX + Math.cos(a) * r, centerY - Math.sin(a) * r) } ctx.closePath(); break;
-                case "umbrella": const h = radius * 0.7, b = radius * 0.2; ctx.arc(centerX, centerY, radius, Math.PI, 0); ctx.lineTo(centerX + radius, centerY); ctx.lineTo(centerX, centerY); ctx.lineTo(centerX, centerY + h); ctx.arc(centerX - b, centerY + h, b, 0, Math.PI / 2, false); break;
+        function onSelect() {
+            if (reticle.visible) {
+                // Si el puntero es visible, significa que hemos encontrado el suelo
+                const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+                const material = new THREE.MeshStandardMaterial({ color: 0xFF0096 });
+                const cube = new THREE.Mesh(geometry, material);
+                
+                // Coloca el cubo en la posición del puntero
+                cube.position.setFromMatrixPosition(reticle.matrix);
+                scene.add(cube);
             }
-            ctx.stroke();
+        }
+
+        function render(timestamp, frame) {
+            if (frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                const session = renderer.xr.getSession();
+
+                if (hitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+                    if (hitTestResults.length) {
+                        const hit = hitTestResults[0];
+                        reticle.visible = true;
+                        reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                    } else {
+                        reticle.visible = false;
+                    }
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        function renderLoop() {
-            requestAnimationFrame(renderLoop);
-            if (!gameActive) return;
-            const canvasSize = gameCanvas.width;
-            gameCtx.clearRect(0, 0, canvasSize, canvasSize);
-            drawShape(currentShape, gameCtx, canvasSize);
-            if (userTrace.length > 1) {
-                gameCtx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
-                gameCtx.lineWidth = 15;
-                gameCtx.lineCap = "round";
-                gameCtx.beginPath();
-                gameCtx.moveTo(userTrace[0].x, userTrace[0].y);
-                for (let i = 1; i < userTrace.length; i++) { gameCtx.lineTo(userTrace[i].x, userTrace[i].y); }
-                gameCtx.stroke();
-            }
-            if (needleMarker.object3D.visible) {
-                const screenPos = getScreenPosition(needleMarker.object3D);
-                gameCtx.fillStyle = '#00FFFF';
-                gameCtx.beginPath();
-                gameCtx.arc(screenPos.x, screenPos.y, 10, 0, Math.PI * 2);
-                gameCtx.fill();
-                if (isWithinBounds(screenPos)) { checkCut(screenPos.x, screenPos.y); }
-            }
-        }
-        renderLoop();
-        
-        // ▼▼▼ FUNCIÓN DE POSICIÓN CORREGIDA FINAL ▼▼▼
-        function getScreenPosition(object3D) {
-            const aframeCanvas = scene.renderer.domElement;
-            const aframeRect = aframeCanvas.getBoundingClientRect();
-            const gameRect = gameCanvas.getBoundingClientRect();
-
-            const vector = new THREE.Vector3();
-            object3D.updateMatrixWorld();
-            vector.setFromMatrixPosition(object3D.matrixWorld);
-            vector.project(scene.camera); // Proyecta a coordenadas normalizadas (-1 a 1)
-
-            // Calcula la posición absoluta del marcador en la pantalla (en píxeles)
-            const absoluteX = aframeRect.left + ((vector.x + 1) / 2) * aframeRect.width;
-            const absoluteY = aframeRect.top + ((1 - vector.y) / 2) * aframeRect.height;
-            
-            // Devuelve la posición relativa al lienzo del juego
-            return { 
-                x: absoluteX - gameRect.left, 
-                y: absoluteY - gameRect.top 
-            };
+        function showMessage(text) {
+             document.getElementById('message').textContent = text;
+             document.getElementById('message').style.display = 'block';
         }
 
-        function isWithinBounds(pos) { return pos.x > 0 && pos.x < gameCanvas.width && pos.y > 0 && pos.y < gameCanvas.height; }
-
-        function checkCut(x, y) {
-            if (!gameActive) return;
-            const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            // Una pequeña tolerancia para que no se pierda al instante si el punto se sale un píxel
-            if (pixelData[3] > 128) {
-                userTrace.push({ x: x, y: y });
-            } else { if (userTrace.length > 5) endGame(false); }
-        }
-        
-        function updateTimer() { if (--timeLeft <= 0) endGame(false); timerElement.textContent = timeLeft; }
-
-        function endGame(isWin) {
-            if (!gameActive) return;
-            gameActive = false;
-            clearInterval(timerInterval);
-            const h1 = overlay.querySelector('h1'), p = overlay.querySelector('p');
-            if (isWin) {
-                h1.textContent = "¡Felicidades!";
-                p.textContent = "Has cortado la forma a la perfección.";
-            } else {
-                crackImg.style.display = 'block';
-                h1.textContent = "¡Has Perdido!";
-                p.textContent = "Te has salido de la línea.";
-            }
-            overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
-            overlay.style.display = 'flex';
-        }
     </script>
 </body>
 </html>
+
+
