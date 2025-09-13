@@ -1,146 +1,193 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
     <meta charset="utf-8">
-    <title>Prueba de Detección de Suelo (WebXR)</title>
+    <title>Puente de Cristal AR (Híbrido)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <!-- Usamos la versión de AR.js que soporta ambas tecnologías -->
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script> 
     <style>
-        body { margin: 0; font-family: sans-serif; background-color: #000; }
-        #ar-button {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 24px;
-            border: 1px solid #fff;
-            border-radius: 4px;
-            background: rgba(0,0,0,0.4);
-            color: #fff;
-            font: 18px sans-serif;
-            z-index: 100;
-            cursor: pointer;
-        }
-        #message {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.7);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 10px;
-            font-size: 1.2em;
-            z-index: 5;
-            display: none;
-        }
+        body { margin: 0; font-family: sans-serif; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; transition: opacity 0.5s ease; }
+        .content { background-color: rgba(20, 20, 20, 0.8); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 0, 150, 0.5); border: 1px solid rgba(255, 0, 150, 0.7); }
+        h1 { font-size: 2.5em; margin-bottom: 10px; color: #FF0096; text-shadow: 0 0 10px #FF0096; }
+        p { font-size: 1.2em; margin-bottom: 25px; }
+        button { padding: 15px 30px; font-size: 1.2em; background-color: #FF0096; color: white; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; }
+        #message { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.2em; z-index: 5; display: none; border: 1px solid #FF0096; max-width: 90%; text-align: center; }
     </style>
 </head>
-<body>
-    <div id="message">Mueve tu teléfono lentamente para escanear el suelo...</div>
+<body style="margin: 0px; overflow: hidden;">
+    <div id="overlay">
+        <div class="content">
+            <h1>Puente de Cristal AR</h1>
+            <p id="instruction-text">Apunta la cámara al marcador "Hiro" para activar la AR. Luego, apunta al suelo y toca para colocar el puente.</p>
+            <button id="startButton">Entendido</button>
+        </div>
+    </div>
+    <div id="message"></div>
 
-    <script type="importmap">
-        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/" } }
-    </script>
+    <a-scene
+        id="scene"
+        vr-mode-ui="enabled: false"
+        renderer="logarithmicDepthBuffer: true;"
+        arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;"
+        ar-hit-test="target: #floor-target; type: feature-point; enabled: false;"
+    >
+        <!-- Marcador Hiro para iniciar -->
+        <a-marker preset="hiro" id="hiro-marker">
+             <!-- Este cubo solo sirve para saber que el marcador fue detectado -->
+            <a-box position="0 0.5 0" material="color: yellow; opacity: 0.5" scale="0.1 0.1 0.1" visible="false"></a-box>
+        </a-marker>
+        
+        <!-- Puntero para el suelo, inicialmente invisible -->
+        <a-entity id="floor-target" visible="false">
+             <a-ring
+                position="0 0.01 0"
+                rotation="-90 0 0"
+                color="#FF0096"
+                radius-inner="0.1"
+                radius-outer="0.15"
+            ></a-ring>
+        </a-entity>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { ARButton } from 'three/addons/webxr/ARButton.js';
+        <a-entity camera cursor="rayOrigin: mouse"></a-entity>
 
-        let camera, scene, renderer;
-        let controller, reticle;
-        let hitTestSource = null;
-
-        init();
-
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-
-            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-            light.position.set(0.5, 1, 0.25);
-            scene.add(light);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
-            document.body.appendChild(renderer.domElement);
-
-            const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
-            document.body.appendChild(arButton);
+        <script>
+            const sceneEl = document.querySelector('a-scene');
+            const startButton = document.getElementById('startButton');
+            const overlay = document.getElementById('overlay');
+            const hiroMarker = document.getElementById('hiro-marker');
+            const floorTarget = document.getElementById('floor-target');
             
-            // Cuando la sesión de AR comienza
-            renderer.xr.addEventListener('sessionstart', async () => {
-                const session = renderer.xr.getSession();
-                document.getElementById('message').style.display = 'block';
+            let gameActive = false;
+            let bridgePlaced = false;
+            let arActivated = false;
+            let currentRow = 0;
+            const bridgeRows = 8;
+            let bridgeEntity = null;
 
-                const viewerSpace = await session.requestReferenceSpace('viewer');
-                hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+            startButton.addEventListener('click', () => {
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 500);
+            });
+            
+            // 1. Detección del marcador Hiro para "desbloquear" la detección de suelo
+            hiroMarker.addEventListener('markerFound', () => {
+                if (!arActivated) {
+                    arActivated = true;
+                    showMessage("¡AR Activada! Ahora apunta al suelo.");
+                    // Habilitar la detección de suelo
+                    sceneEl.setAttribute('ar-hit-test', 'enabled', 'true');
+                    floorTarget.setAttribute('visible', 'true');
+                }
             });
 
-            // Controlador para el toque en pantalla
-            controller = renderer.xr.getController(0);
-            controller.addEventListener('select', onSelect);
-            scene.add(controller);
+            // 2. Colocar el puente en el suelo
+            sceneEl.addEventListener('click', () => {
+                if (floorTarget.getAttribute('visible') && !bridgePlaced && arActivated) {
+                    bridgePlaced = true;
+                    gameActive = true;
+                    floorTarget.setAttribute('visible', 'false');
+                    hiroMarker.setAttribute('visible', 'false'); // Ya no necesitamos el marcador
 
-            // Retícula (el puntero que se pega al suelo)
-            reticle = new THREE.Mesh(
-                new THREE.RingGeometry(0.05, 0.07, 32).rotateX(-Math.PI / 2),
-                new THREE.MeshBasicMaterial({ color: 0xffffff })
-            );
-            reticle.matrixAutoUpdate = false;
-            reticle.visible = false;
-            scene.add(reticle);
+                    const position = floorTarget.getAttribute('position');
+                    createBridge(position);
+                    showMessage("¡Puente colocado! ¡A cruzar!");
+                }
+            });
 
-            window.addEventListener('resize', onWindowResize);
-            renderer.setAnimationLoop(render);
-        }
-
-        function onSelect() {
-            if (reticle.visible) {
-                // Si el puntero es visible, significa que hemos encontrado el suelo
-                const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-                const material = new THREE.MeshStandardMaterial({ color: 0xFF0096 });
-                const cube = new THREE.Mesh(geometry, material);
+            function createBridge(position) {
+                if (bridgeEntity) {
+                    sceneEl.removeChild(bridgeEntity);
+                }
                 
-                // Coloca el cubo en la posición del puntero
-                cube.position.setFromMatrixPosition(reticle.matrix);
-                scene.add(cube);
+                bridgeEntity = document.createElement('a-entity');
+                bridgeEntity.setAttribute('position', position);
+                
+                const squareSize = 1;
+                const gap = 0.1;
+                
+                currentRow = 0;
+
+                for (let i = 0; i < bridgeRows; i++) {
+                    const safeIndex = Math.round(Math.random());
+                    for (let j = 0; j < 2; j++) {
+                        const square = document.createElement('a-box');
+                        square.setAttribute('position', { x: (j * (squareSize + gap)) - (squareSize / 2 + gap / 2), y: 0, z: -(i * (squareSize + gap)) });
+                        square.setAttribute('width', squareSize);
+                        square.setAttribute('height', 0.1);
+                        square.setAttribute('depth', squareSize);
+                        square.setAttribute('material', 'color: white; transparent: true; opacity: 0.4');
+                        
+                        square.dataset.row = i;
+                        square.dataset.isSafe = (j === safeIndex);
+
+                        square.addEventListener('click', handleInteraction);
+                        bridgeEntity.appendChild(square);
+                    }
+                }
+                sceneEl.appendChild(bridgeEntity);
             }
-        }
 
-        function render(timestamp, frame) {
-            if (frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
-                const session = renderer.xr.getSession();
+            function handleInteraction(event) {
+                if (!gameActive) return;
+                const clickedSquare = event.target;
+                const row = parseInt(clickedSquare.dataset.row);
+                const isSafe = clickedSquare.dataset.isSafe === 'true';
 
-                if (hitTestSource) {
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
-                    if (hitTestResults.length) {
-                        const hit = hitTestResults[0];
-                        reticle.visible = true;
-                        reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                if (row === currentRow) {
+                    if (clickedSquare.getAttribute('data-clicked')) return;
+                    clickedSquare.setAttribute('data-clicked', 'true');
+
+                    if (isSafe) {
+                        clickedSquare.setAttribute('material', 'color', 'lime');
+                        clickedSquare.setAttribute('material', 'opacity', '0.9');
+                        currentRow++;
+                        if (currentRow >= bridgeRows) endGame(true);
                     } else {
-                        reticle.visible = false;
+                        clickedSquare.setAttribute('animation', { property: 'position', to: { x: clickedSquare.object3D.position.x, y: -5, z: clickedSquare.object3D.position.z }, dur: 1500, easing: 'easeInQuad' });
+                        clickedSquare.setAttribute('animation__fade', { property: 'material.opacity', to: 0, dur: 1500 });
+                        endGame(false);
                     }
                 }
             }
-            renderer.render(scene, camera);
-        }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-        
-        function showMessage(text) {
-             document.getElementById('message').textContent = text;
-             document.getElementById('message').style.display = 'block';
-        }
+            function resetGame() {
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 500);
+                if (bridgeEntity) {
+                    sceneEl.removeChild(bridgeEntity);
+                    bridgeEntity = null;
+                }
+                bridgePlaced = false;
+                gameActive = false;
+                arActivated = false; // Permitir que se reactive con el marcador
+                hiroMarker.setAttribute('visible', 'true');
+                showMessage("Apunta al marcador para activar la AR.");
+            }
 
-    </script>
+            function endGame(isWin) {
+                gameActive = false;
+                showMessage(isWin ? "¡Felicidades, has cruzado!" : "¡Juego Terminado! Has caído.");
+                setTimeout(() => {
+                    overlay.style.display = 'flex';
+                    overlay.style.opacity = '1';
+                    document.querySelector('#overlay h1').textContent = isWin ? '¡Has Ganado!' : 'Juego Terminado';
+                    document.querySelector('#overlay p').textContent = '¿Quieres jugar de nuevo?';
+                    startButton.textContent = 'Reiniciar Juego';
+                    startButton.onclick = resetGame;
+                }, 3000);
+            }
+
+            function showMessage(text) {
+                const msgEl = document.getElementById('message');
+                msgEl.textContent = text;
+                msgEl.style.display = 'block';
+                setTimeout(() => { msgEl.style.display = 'none'; }, 3000);
+            }
+        </script>
+    </a-scene>
 </body>
 </html>
-
 
