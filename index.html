@@ -2,13 +2,13 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR (Vectorial)</title>
+    <title>Reto Dalgona AR (Depurado)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; }
-        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; /* Eliminado fondo oscuro para ver la cámara */ pointer-events: none; }
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; pointer-events: none; }
         .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
         #cookie-canvas, #drawing-canvas, #crack-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #crack-img { pointer-events: none; display: none; }
@@ -70,35 +70,33 @@
             document.getElementById('game-ui').style.display = 'flex';
             crackImg.style.display = 'none';
             
-            const containerSize = cookieCanvas.offsetWidth;
-            cookieCanvas.width = containerSize;
-            cookieCanvas.height = containerSize;
-            drawingCanvas.width = containerSize;
-            drawingCanvas.height = containerSize;
+            // Forzamos un pequeño retraso para asegurar que el DOM esté listo
+            setTimeout(() => {
+                const containerSize = cookieCanvas.offsetWidth;
+                cookieCanvas.width = containerSize;
+                cookieCanvas.height = containerSize;
+                drawingCanvas.width = containerSize;
+                drawingCanvas.height = containerSize;
 
-            cookieCtx.clearRect(0, 0, cookieCanvas.width, cookieCanvas.height);
-            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-            
-            drawShape(shape, cookieCtx, containerSize);
-            
-            timeLeft = 60;
-            timerElement.textContent = timeLeft;
-            gameActive = true;
-            timerInterval = setInterval(updateTimer, 1000);
+                cookieCtx.clearRect(0, 0, cookieCanvas.width, cookieCanvas.height);
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                
+                drawShape(shape, cookieCtx, containerSize);
+                
+                timeLeft = 60;
+                timerElement.textContent = timeLeft;
+                gameActive = true;
+                timerInterval = setInterval(updateTimer, 1000);
+            }, 100); // 100ms de retraso
         }
 
         function drawShape(shape, ctx, size) {
             const centerX = size / 2;
             const centerY = size / 2;
             const radius = size * 0.35;
-
-            // ▼▼▼ LÍNEAS MODIFICADAS ▼▼▼
-            ctx.strokeStyle = "rgba(255, 199, 102, 0.8)"; // Un color más parecido a la galleta
-            ctx.lineWidth = 15; // Línea más gruesa para que sea más fácil seguirla
-            // ▲▲▲ FIN DE MODIFICACIÓN ▲▲▲
-            
+            ctx.strokeStyle = "rgba(255, 199, 102, 0.8)";
+            ctx.lineWidth = 15;
             ctx.beginPath();
-
             switch (shape) {
                 case 'triangle':
                     ctx.moveTo(centerX + radius * Math.cos(0), centerY + radius * Math.sin(0));
@@ -130,14 +128,26 @@
         }
         
         scene.addEventListener('render-target-loaded', function () {
+            const renderer = scene.renderer;
+            
             function renderLoop() {
-                if (!gameActive) {
-                    requestAnimationFrame(renderLoop);
-                    return;
-                }
-                
+                requestAnimationFrame(renderLoop);
+                if (!gameActive) return;
+
+                // ▼▼▼ DEBUG VISUAL ▼▼▼
+                // Limpia el canvas de dibujo en cada frame para mover el punto de depuración
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                // ▲▲▲ FIN DEBUG ▲▲▲
+
                 if (needleMarker.object3D.visible) {
                     const screenPos = getScreenPosition(needleMarker.object3D);
+                    
+                    // ▼▼▼ DEBUG VISUAL ▼▼▼
+                    // Dibuja un punto cian donde el código cree que está la aguja
+                    drawingCtx.fillStyle = 'cyan';
+                    drawingCtx.fillRect(screenPos.x - 3, screenPos.y - 3, 6, 6);
+                    // ▲▲▲ FIN DEBUG ▲▲▲
+
                     if (isWithinBounds(screenPos)) {
                         checkCut(screenPos.x, screenPos.y);
                     } else {
@@ -146,29 +156,25 @@
                 } else {
                     isTracing = false;
                 }
-                
-                requestAnimationFrame(renderLoop);
             }
-            requestAnimationFrame(renderLoop);
+            renderLoop();
         });
         
         function getScreenPosition(object3D) {
             const vector = new THREE.Vector3();
             const renderer = scene.renderer;
-            const widthHalf = 0.5 * renderer.domElement.offsetWidth;
-            const heightHalf = 0.5 * renderer.domElement.offsetHeight;
+            const canvas = renderer.domElement;
             
             object3D.updateMatrixWorld();
             vector.setFromMatrixPosition(object3D.matrixWorld);
-            
-            const camera = scene.camera;
-            vector.project(camera);
+            vector.project(scene.camera);
             
             const gameContainer = document.querySelector('.game-container');
             const rect = gameContainer.getBoundingClientRect();
 
-            const x = (vector.x * widthHalf + widthHalf) - rect.left;
-            const y = -(vector.y * heightHalf) + heightHalf - rect.top;
+            // Convierte de coordenadas normalizadas (-1 a 1) a coordenadas de píxel relativas al canvas del juego
+            const x = ((vector.x + 1) / 2) * rect.width;
+            const y = (-(vector.y - 1) / 2) * rect.height;
             
             return { x, y };
         }
@@ -180,23 +186,26 @@
         function checkCut(x, y) {
             if (!gameActive) return;
             
-            const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
-            const isOnPath = pixelData[3] > 128; 
-
-            if (!isOnPath) {
-                endGame(false);
-            } else {
-                if(!isTracing) {
-                    drawingCtx.beginPath();
-                    drawingCtx.moveTo(x, y);
-                    isTracing = true;
-                } else {
-                    drawingCtx.lineTo(x, y);
-                    drawingCtx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
-                    drawingCtx.lineWidth = 15;
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.stroke();
+            // ▼▼▼ MEJORA DE DETECCIÓN ▼▼▼
+            // Revisa un área de 5x5 píxeles alrededor del punto para ser más tolerante
+            const pixelData = cookieCtx.getImageData(x - 2, y - 2, 5, 5).data;
+            let isOnPath = false;
+            for (let i = 3; i < pixelData.length; i += 4) { // Solo revisa el canal alfa
+                if (pixelData[i] > 128) {
+                    isOnPath = true;
+                    break;
                 }
+            }
+            // ▲▲▲ FIN DE MEJORA ▲▲▲
+
+            if (isOnPath) {
+                // Si está en el camino, dibuja el trazo rojo sobre el punto cian
+                drawingCtx.fillStyle = 'rgba(255, 0, 0, 0.6)';
+                drawingCtx.beginPath();
+                drawingCtx.arc(x, y, 10, 0, Math.PI * 2);
+                drawingCtx.fill();
+            } else {
+                endGame(false); // Si no está en el camino, fin del juego
             }
         }
         
@@ -210,13 +219,10 @@
 
         function endGame(isWin) {
             if (!gameActive) return;
-            
             gameActive = false;
             clearInterval(timerInterval);
-            
             const h1 = overlay.querySelector('h1');
             const p = overlay.querySelector('p');
-
             if (isWin) {
                 h1.textContent = "¡Felicidades!";
                 p.textContent = "Has cortado la forma a la perfección.";
@@ -225,7 +231,6 @@
                 h1.textContent = "¡Has Perdido!";
                 p.textContent = "Te has salido de la línea.";
             }
-            
             overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
             overlay.style.display = 'flex';
         }
