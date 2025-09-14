@@ -7,10 +7,10 @@
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        video { display: none; } /* El video real está oculto, solo lo usamos como fuente */
+        video { display: none; }
         #ar-canvas, #game-canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 100%; max-height: 100%; border-radius: 10px; }
-        #ar-canvas { z-index: 1; /* Lienzo para la cámara y el esqueleto de la mano */ }
-        #game-canvas { z-index: 2; pointer-events: none; /* Lienzo para la galleta y el corte */ }
+        #ar-canvas { z-index: 1; transform: translate(-50%, -50%) scaleX(-1); }
+        #game-canvas { z-index: 2; pointer-events: none; }
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 30; display: none; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 100; padding: 20px; box-sizing: border-box; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); max-width: 90%; }
@@ -41,7 +41,7 @@
                 <button id="btn-star">Estrella</button>
                 <button id="btn-umbrella">Paraguas</button>
             </div>
-             <div id="loading">Iniciando cámara...</div>
+             <div id="loading">Iniciando cámara y sensores...</div>
              <p id="errorMessage"></p>
         </div>
     </div>
@@ -123,8 +123,6 @@
                 case 'umbrella':
                     const umbRadius = size * 0.2;
                     ctx.arc(center, center, umbRadius, Math.PI, 0);
-                    ctx.moveTo(center - umbRadius, center);
-                    ctx.lineTo(center + umbRadius, center);
                     ctx.moveTo(center, center);
                     ctx.lineTo(center, center + umbRadius * 1.5);
                     ctx.moveTo(center, center + umbRadius * 1.5);
@@ -164,13 +162,14 @@
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-                drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0, 255, 0, 0.5)', lineWidth: 5 });
+                drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(255, 255, 255, 0.5)', lineWidth: 3 });
+                drawLandmarks(arCtx, landmarks, { color: '#FFA500', lineWidth: 2, radius: 4 });
                 
                 const indexFingerTip = landmarks[8];
                 
                 const arCanvasRect = arCanvas.getBoundingClientRect();
                 const gameContainerRect = document.querySelector('.game-container').getBoundingClientRect();
-
+                
                 const fingerX_norm = selectedFacingMode === 'user' ? (1 - indexFingerTip.x) : indexFingerTip.x;
                 const fingerY_norm = indexFingerTip.y;
                 
@@ -184,17 +183,19 @@
             arCtx.restore();
         }
         
+        // ESTA ES LA LÓGICA DE INICIO QUE SÍ FUNCIONA
         async function startGame(shape) {
             overlay.querySelector('.content').style.display = 'none';
             loadingElement.style.display = 'block';
 
             try {
-                // ESTA ES LA LÓGICA DE PERMISOS QUE SÍ FUNCIONA
+                // Paso 1: Pedir permiso al navegador directamente
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 1280, height: 720, facingMode: selectedFacingMode }
                 });
                 videoElement.srcObject = stream;
                 
+                // Paso 2: Esperar a que la cámara esté realmente lista
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
                     
@@ -203,12 +204,14 @@
                     gameCanvas.height = gameContainerSize;
                     drawShape(gameCtx, shape, gameContainerSize);
 
+                    // Paso 3: Solo entonces, inicializar la IA de manos
                     if (!hands) {
                         hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
                         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
                         hands.onResults(onResults);
                     }
 
+                    // Paso 4: Empezar a enviar la imagen de la cámara a la IA
                     sendToHands();
                     
                     timeLeft = 60;
@@ -222,7 +225,7 @@
                 loadingElement.style.display = 'none';
                 overlay.querySelector('.content').style.display = 'block';
                 errorElement.style.display = 'block';
-                errorElement.textContent = `Error: ${err.message}. Asegúrate de dar permiso a la cámara.`;
+                errorElement.textContent = `Error: ${err.message}. Asegúrate de dar permiso a la cámara y sensores.`;
             }
         }
         
@@ -255,7 +258,7 @@
             timeLeft--;
             timerElement.textContent = timeLeft;
             if (timeLeft <= 0) {
-                endGame(true); // Se considera victoria si se acaba el tiempo sin romper la galleta
+                endGame(true); 
             }
         }
 
