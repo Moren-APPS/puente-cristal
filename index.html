@@ -2,243 +2,218 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona AR</title>
+    <title>Reto Dalgona: Hand Tracking</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; }
-        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); pointer-events: none; }
-        .game-container { position: relative; width: 90vw; height: 90vw; max-width: 500px; max-height: 500px; }
-        #cookie-canvas, #drawing-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 20; padding: 20px; box-sizing: border-box; }
+        body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; overflow: hidden; }
+        #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        /* El canvas de la cámara y el de la galleta ahora están separados */
+        #ar-canvas, #game-canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 100%; max-height: 100%; border-radius: 10px; }
+        #ar-canvas { transform: translate(-50%, -50%) scaleX(-1); z-index: 1; } /* Cámara en el fondo */
+        #game-canvas { z-index: 2; pointer-events: none; } /* Galleta encima */
+        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 30; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 100; padding: 20px; box-sizing: border-box; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); }
         h1 { font-size: 2.5em; margin-bottom: 10px; color: #FFA500; text-shadow: 0 0 10px #FFA500; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; margin: 5px; }
+        #loading { display: none; color: white; font-size: 1.5em; }
+        #errorMessage { display: none; color: #f87171; margin-top: 20px; max-width: 80%; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
-<body style="margin: 0px; overflow: hidden;">
-
+<body>
     <div id="overlay">
         <div class="content">
-            <h1>Reto Dalgona AR</h1>
-            <p>Pega el marcador "Hiro" en la punta de un lápiz.<br>Elige una forma para empezar.</p>
+            <h1>Reto Dalgona</h1>
+            <p>Usa tu dedo índice para cortar la galleta.<br>Elige una forma para empezar.</p>
             <div id="shape-selector" style="margin-bottom: 20px;">
-                <button onclick="startGame('triangle')">Triángulo</button>
-                <button onclick="startGame('star')">Estrella</button>
-                <button onclick="startGame('umbrella')">Paraguas</button>
+                <button id="btn-triangle">Triángulo</button>
+                <button id="btn-star">Estrella</button>
+                <button id="btn-umbrella">Paraguas</button>
             </div>
+             <div id="loading">Iniciando cámara...</div>
+             <p id="errorMessage"></p>
         </div>
     </div>
     
-    <div id="game-ui" style="display:none;">
-        <div class="game-container">
-            <canvas id="cookie-canvas"></canvas>
-            <canvas id="drawing-canvas"></canvas>
-        </div>
-        <div id="timer">60</div>
+    <div id="container">
+        <video id="webcam" style="display: none;" playsinline></video>
+        <canvas id="ar-canvas"></canvas>
+        <canvas id="game-canvas"></canvas>
     </div>
-
-    <a-scene embedded arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3; debugUIEnabled: false;" vr-mode-ui="enabled: false">
-        <a-marker preset="hiro" id="needle-marker">
-            <a-cone id="needle" position="0 -0.5 0" rotation="-90 0 0" radius-bottom="0.02" radius-top="0" height="1" material="color: silver; metalness: 0.8;"></a-cone>
-        </a-marker>
-        <a-entity camera></a-entity>
-    </a-scene>
+    <div id="timer">60</div>
 
     <script>
-        let gameActive = false;
-        let timerInterval;
-        let timeLeft = 60;
-        let isTracing = false;
-        
-        const cookieCanvas = document.getElementById('cookie-canvas');
-        const drawingCanvas = document.getElementById('drawing-canvas');
-        const cookieCtx = cookieCanvas.getContext('2d');
-        const drawingCtx = drawingCanvas.getContext('2d');
-        const needleMarker = document.getElementById('needle-marker');
-        const scene = document.querySelector('a-scene');
-        const timerElement = document.getElementById('timer');
         const overlay = document.getElementById('overlay');
+        const videoElement = document.getElementById('webcam');
+        const arCanvas = document.getElementById('ar-canvas');
+        const arCtx = arCanvas.getContext('2d');
+        const gameCanvas = document.getElementById('game-canvas');
+        const gameCtx = gameCanvas.getContext('2d');
+        const loadingElement = document.getElementById('loading');
+        const errorElement = document.getElementById('errorMessage');
+        const timerElement = document.getElementById('timer');
         
-        function startGame(shape) {
-            overlay.style.display = 'none';
-            document.getElementById('game-ui').style.display = 'flex';
-            
-            const containerSize = cookieCanvas.offsetWidth;
-            cookieCanvas.width = containerSize;
-            cookieCanvas.height = containerSize;
-            drawingCanvas.width = containerSize;
-            drawingCanvas.height = containerSize;
+        let hands, animationFrameId;
+        let gameActive = false, timerInterval, timeLeft = 60, isTracing = false;
 
-            drawDalgona(shape);
+        document.getElementById('btn-triangle').onclick = () => startGame('triangle');
+        document.getElementById('btn-star').onclick = () => startGame('star');
+        document.getElementById('btn-umbrella').onclick = () => startGame('umbrella');
 
-            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-            
-            timeLeft = 60;
-            timerElement.textContent = timeLeft;
-            gameActive = true;
-            timerInterval = setInterval(updateTimer, 1000);
-            
-            scene.addEventListener('render-target-loaded', renderLoop);
-        }
-
-        function drawDalgona(shape) {
-            const ctx = cookieCtx;
-            const size = cookieCanvas.width;
+        function drawShape(ctx, shape, size) {
             const center = size / 2;
-
-            // Dibuja la galleta
             ctx.clearRect(0, 0, size, size);
-            ctx.fillStyle = '#f0c27b'; // Color de la galleta
+            // Dibujar galleta de fondo
+            ctx.fillStyle = 'rgba(240, 194, 123, 0.8)';
             ctx.beginPath();
             ctx.arc(center, center, size * 0.45, 0, Math.PI * 2);
             ctx.fill();
-            
-            // Dibuja el contorno de la forma
-            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            // Dibujar contorno de la forma
+            ctx.strokeStyle = 'rgba(191, 123, 40, 0.7)';
             ctx.lineWidth = size * 0.015;
             ctx.beginPath();
 
             switch (shape) {
                 case 'triangle':
-                    drawTriangle(ctx, center, size * 0.25);
+                    const triRadius = size * 0.25;
+                    ctx.moveTo(center, center - triRadius);
+                    ctx.lineTo(center + triRadius * Math.cos(Math.PI / 6), center + triRadius * Math.sin(Math.PI / 6));
+                    ctx.lineTo(center - triRadius * Math.cos(Math.PI / 6), center + triRadius * Math.sin(Math.PI / 6));
+                    ctx.closePath();
                     break;
                 case 'star':
-                    drawStar(ctx, center, center, 5, size * 0.3, size * 0.15);
+                    const spikes = 5, outerRadius = size * 0.25, innerRadius = size * 0.1;
+                    let rot = Math.PI / 2 * 3;
+                    let x = center, y = center;
+                    let step = Math.PI / spikes;
+                    ctx.moveTo(center, center - outerRadius);
+                    for (let i = 0; i < spikes; i++) {
+                        x = center + Math.cos(rot) * outerRadius;
+                        y = center + Math.sin(rot) * outerRadius;
+                        ctx.lineTo(x, y);
+                        rot += step;
+                        x = center + Math.cos(rot) * innerRadius;
+                        y = center + Math.sin(rot) * innerRadius;
+                        ctx.lineTo(x, y);
+                        rot += step;
+                    }
+                    ctx.closePath();
                     break;
                 case 'umbrella':
-                    drawUmbrella(ctx, center, size * 0.3);
+                    const umbRadius = size * 0.2;
+                    ctx.arc(center, center, umbRadius, Math.PI, 0);
+                    ctx.moveTo(center - umbRadius, center);
+                    ctx.lineTo(center + umbRadius, center);
+                    ctx.moveTo(center, center);
+                    ctx.lineTo(center, center + umbRadius * 1.5);
+                    ctx.moveTo(center, center + umbRadius * 1.5);
+                    ctx.arc(center - umbRadius * 0.2, center + umbRadius * 1.5, umbRadius * 0.2, 0, Math.PI / 2);
                     break;
             }
             ctx.stroke();
         }
 
-        function drawTriangle(ctx, center, radius) {
-            ctx.moveTo(center, center - radius);
-            ctx.lineTo(center + radius * Math.cos(Math.PI / 6), center + radius * Math.sin(Math.PI / 6));
-            ctx.lineTo(center - radius * Math.cos(Math.PI / 6), center + radius * Math.sin(Math.PI / 6));
-            ctx.closePath();
-        }
-
-        function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
-            let rot = Math.PI / 2 * 3;
-            let x = cx;
-            let y = cy;
-            let step = Math.PI / spikes;
-            ctx.moveTo(cx, cy - outerRadius);
-            for (let i = 0; i < spikes; i++) {
-                x = cx + Math.cos(rot) * outerRadius;
-                y = cy + Math.sin(rot) * outerRadius;
-                ctx.lineTo(x, y);
-                rot += step;
-                x = cx + Math.cos(rot) * innerRadius;
-                y = cy + Math.sin(rot) * innerRadius;
-                ctx.lineTo(x, y);
-                rot += step;
+        function onResults(results) {
+            if (loadingElement.style.display !== 'none') {
+                loadingElement.style.display = 'none';
+                document.getElementById('game-ui').style.display = 'flex';
             }
-            ctx.closePath();
-        }
-        
-        function drawUmbrella(ctx, center, radius) {
-            ctx.arc(center, center, radius, Math.PI, 0);
-            ctx.moveTo(center, center);
-            ctx.lineTo(center, center + radius * 1.5);
-            ctx.moveTo(center, center + radius * 1.5);
-            ctx.arc(center - radius * 0.2, center + radius * 1.5, radius * 0.2, 0, Math.PI / 2);
-        }
-        
-        function drawCrack() {
-            const ctx = drawingCtx;
-            const size = drawingCanvas.width;
-            ctx.clearRect(0,0,size,size);
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.lineWidth = 3;
-            for(let i = 0; i < 5; i++){
-                ctx.beginPath();
-                ctx.moveTo(size/2, size/2);
-                ctx.lineTo(Math.random() * size, Math.random() * size);
-                ctx.stroke();
-            }
-        }
 
-
-        scene.addEventListener('render-target-loaded', function () {
-            function renderLoop() {
-                if (!gameActive) return;
+            arCanvas.width = videoElement.videoWidth;
+            arCanvas.height = videoElement.videoHeight;
+            
+            arCtx.save();
+            arCtx.clearRect(0, 0, arCanvas.width, arCanvas.height);
+            arCtx.drawImage(videoElement, 0, 0, arCanvas.width, arCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0]; // Usar solo la primera mano detectada
+                drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0, 255, 0, 0.5)', lineWidth: 5 });
+                drawLandmarks(arCtx, landmarks, { color: 'rgba(255, 0, 0, 0.7)', lineWidth: 2 });
                 
-                if (needleMarker.object3D.visible) {
-                    const screenPos = getScreenPosition(needleMarker.object3D);
-                    if (isWithinBounds(screenPos)) {
-                        checkCut(screenPos.x, screenPos.y);
-                    } else {
-                        isTracing = false; 
-                    }
-                } else {
-                    isTracing = false; 
-                }
+                // Usar el dedo índice para cortar
+                const indexFingerTip = landmarks[8];
+                const gameContainerRect = document.querySelector('.game-container').getBoundingClientRect();
                 
-                requestAnimationFrame(renderLoop);
+                // Convertir coordenadas normalizadas de la IA (0.0 a 1.0) a coordenadas del canvas del juego
+                const x = indexFingerTip.x * gameCanvas.width;
+                const y = indexFingerTip.y * gameCanvas.height;
+
+                checkCut(x, y);
+            } else {
+                 isTracing = false;
             }
-            requestAnimationFrame(renderLoop);
-        });
+            arCtx.restore();
+        }
         
-        function getScreenPosition(object3D) {
-            const vector = new THREE.Vector3();
-            const renderer = scene.renderer;
-            const widthHalf = 0.5 * renderer.domElement.offsetWidth;
-            const heightHalf = 0.5 * renderer.domElement.offsetHeight;
-            
-            object3D.updateMatrixWorld();
-            vector.setFromMatrixPosition(object3D.matrixWorld);
-            
-            const camera = scene.camera;
-            vector.project(camera);
-            
-            const gameContainer = document.querySelector('.game-container');
-            const rect = gameContainer.getBoundingClientRect();
+        async function startGame(shape) {
+            overlay.querySelector('#shape-selector').style.display = 'none';
+            loadingElement.style.display = 'block';
 
-            const x = (vector.x * widthHalf + widthHalf) - rect.left;
-            const y = -(vector.y * heightHalf) + heightHalf - rect.top;
-            
-            return { x, y };
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720, facingMode: 'user' } // Usar cámara frontal
+                });
+                videoElement.srcObject = stream;
+                videoElement.play();
+
+                videoElement.onloadedmetadata = () => {
+                    const gameContainerSize = document.querySelector('.game-container').offsetWidth;
+                    gameCanvas.width = gameContainerSize;
+                    gameCanvas.height = gameContainerSize;
+
+                    drawShape(gameCtx, shape, gameContainerSize);
+
+                    hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                    hands.onResults(onResults);
+
+                    sendToHands();
+                    
+                    timeLeft = 60;
+                    timerElement.textContent = timeLeft;
+                    gameActive = true;
+                    timerInterval = setInterval(updateTimer, 1000);
+                };
+
+            } catch (err) {
+                loadingElement.style.display = 'none';
+                errorElement.style.display = 'block';
+                errorElement.textContent = `Error al iniciar la cámara: ${err.message}. Asegúrate de haber dado permiso.`;
+                console.error(err);
+            }
+        }
+        
+        async function sendToHands() {
+            if (!videoElement.paused && !videoElement.ended) {
+                await hands.send({ image: videoElement });
+            }
+            animationFrameId = requestAnimationFrame(sendToHands);
         }
 
-        function isWithinBounds(pos) {
-            return pos.x > 0 && pos.x < drawingCanvas.width && pos.y > 0 && pos.y < drawingCanvas.height;
-        }
-
-        let lastPos = null;
         function checkCut(x, y) {
             if (!gameActive) return;
-            
-            // Chequear la transparencia del pixel en el canvas de la forma
-            const pixelData = cookieCtx.getImageData(x, y, 1, 1).data;
-            const isOnPath = pixelData[3] > 0; 
 
-            if (!isOnPath) {
+            const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
+            const isOnPath = pixelData[3] > 0; // El path tiene alpha, el fondo no
+
+            if (!isOnPath && isTracing) { // Solo pierde si se sale MIENTRAS traza
                 endGame(false);
-            } else {
-                if(!isTracing) {
-                    drawingCtx.beginPath();
-                    drawingCtx.moveTo(x, y);
+            } else if (isOnPath) {
+                if (!isTracing) {
                     isTracing = true;
-                } else {
-                    drawingCtx.lineTo(x, y);
-                    drawingCtx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
-                    drawingCtx.lineWidth = 15;
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.stroke();
                 }
             }
         }
-        
+
         function updateTimer() {
+            if (!gameActive) return;
             timeLeft--;
             timerElement.textContent = timeLeft;
             if (timeLeft <= 0) {
-                endGame(false); 
+                endGame(false);
             }
         }
 
@@ -247,15 +222,18 @@
             
             gameActive = false;
             clearInterval(timerInterval);
+            cancelAnimationFrame(animationFrameId);
             
             const h1 = overlay.querySelector('h1');
             const p = overlay.querySelector('p');
+            const crackImg = document.getElementById('crack-img');
 
             if (isWin) {
                 h1.textContent = "¡Felicidades!";
                 p.textContent = "Has cortado la galleta a la perfección.";
             } else {
-                drawCrack();
+                crackImg.style.display = 'block';
+                setTimeout(() => crackImg.style.opacity = '1', 50);
                 h1.textContent = "¡Has Perdido!";
                 p.textContent = "La galleta se ha roto.";
             }
