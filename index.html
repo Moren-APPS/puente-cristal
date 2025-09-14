@@ -7,17 +7,20 @@
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        /* El canvas de la cámara y el de la galleta ahora están separados */
+        video { display: none; }
         #ar-canvas, #game-canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 100%; max-height: 100%; border-radius: 10px; }
-        #ar-canvas { transform: translate(-50%, -50%) scaleX(-1); z-index: 1; } /* Cámara en el fondo */
-        #game-canvas { z-index: 2; pointer-events: none; } /* Galleta encima */
-        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 30; }
+        #ar-canvas { transform: translate(-50%, -50%) scaleX(-1); z-index: 1; }
+        #game-canvas { z-index: 2; pointer-events: none; }
+        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 30; display: none; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 100; padding: 20px; box-sizing: border-box; }
-        .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); }
+        .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); max-width: 90%; }
         h1 { font-size: 2.5em; margin-bottom: 10px; color: #FFA500; text-shadow: 0 0 10px #FFA500; }
-        button { padding: 15px 30px; font-size: 1.2em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; margin: 5px; }
-        #loading { display: none; color: white; font-size: 1.5em; }
-        #errorMessage { display: none; color: #f87171; margin-top: 20px; max-width: 80%; }
+        button { padding: 12px 24px; font-size: 1.1em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; margin: 5px; transition: transform 0.2s; }
+        button:hover { transform: scale(1.05); }
+        #loading, #errorMessage { display: none; color: white; font-size: 1.2em; margin-top: 20px; }
+        #errorMessage { color: #f87171; }
+        .camera-select button { background-color: #333; color: white; border: 1px solid #555; }
+        .camera-select button.selected { background-color: #FFA500; color: #0d0d0d; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -26,8 +29,14 @@
     <div id="overlay">
         <div class="content">
             <h1>Reto Dalgona</h1>
-            <p>Usa tu dedo índice para cortar la galleta.<br>Elige una forma para empezar.</p>
-            <div id="shape-selector" style="margin-bottom: 20px;">
+            <p>Usa tu dedo índice para cortar la galleta.</p>
+            <div class="camera-select" style="margin: 20px 0;">
+                <p style="margin-bottom: 10px;">Elige tu cámara:</p>
+                <button id="btn-front-cam" class="selected">Frontal</button>
+                <button id="btn-back-cam">Trasera</button>
+            </div>
+            <p>Elige una forma para empezar:</p>
+            <div id="shape-selector">
                 <button id="btn-triangle">Triángulo</button>
                 <button id="btn-star">Estrella</button>
                 <button id="btn-umbrella">Paraguas</button>
@@ -38,13 +47,14 @@
     </div>
     
     <div id="container">
-        <video id="webcam" style="display: none;" playsinline></video>
+        <video id="webcam" playsinline></video>
         <canvas id="ar-canvas"></canvas>
         <canvas id="game-canvas"></canvas>
     </div>
     <div id="timer">60</div>
 
     <script>
+        // --- Elementos del DOM ---
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
         const arCanvas = document.getElementById('ar-canvas');
@@ -54,25 +64,39 @@
         const loadingElement = document.getElementById('loading');
         const errorElement = document.getElementById('errorMessage');
         const timerElement = document.getElementById('timer');
-        
+
+        // --- Variables de estado del juego ---
         let hands, animationFrameId;
         let gameActive = false, timerInterval, timeLeft = 60, isTracing = false;
+        let selectedFacingMode = 'user'; // 'user' para frontal, 'environment' para trasera
 
+        // --- Asignación de Eventos ---
+        document.getElementById('btn-front-cam').onclick = () => selectCamera('user');
+        document.getElementById('btn-back-cam').onclick = () => selectCamera('environment');
         document.getElementById('btn-triangle').onclick = () => startGame('triangle');
         document.getElementById('btn-star').onclick = () => startGame('star');
         document.getElementById('btn-umbrella').onclick = () => startGame('umbrella');
 
+        function selectCamera(mode) {
+            selectedFacingMode = mode;
+            document.getElementById('btn-front-cam').classList.toggle('selected', mode === 'user');
+            document.getElementById('btn-back-cam').classList.toggle('selected', mode === 'environment');
+            // Al cambiar de cámara, la escala de la imagen se invierte o no
+            arCanvas.style.transform = `translate(-50%, -50%) ${mode === 'user' ? 'scaleX(-1)' : ''}`;
+        }
+        
+        // --- Lógica de Dibujo Vectorial ---
         function drawShape(ctx, shape, size) {
             const center = size / 2;
             ctx.clearRect(0, 0, size, size);
-            // Dibujar galleta de fondo
-            ctx.fillStyle = 'rgba(240, 194, 123, 0.8)';
+            // Dibujar galleta de fondo semi-transparente
+            ctx.fillStyle = 'rgba(240, 194, 123, 0.75)';
             ctx.beginPath();
             ctx.arc(center, center, size * 0.45, 0, Math.PI * 2);
             ctx.fill();
             // Dibujar contorno de la forma
-            ctx.strokeStyle = 'rgba(191, 123, 40, 0.7)';
-            ctx.lineWidth = size * 0.015;
+            ctx.strokeStyle = 'rgba(191, 123, 40, 0.85)';
+            ctx.lineWidth = size * 0.02;
             ctx.beginPath();
 
             switch (shape) {
@@ -104,8 +128,6 @@
                 case 'umbrella':
                     const umbRadius = size * 0.2;
                     ctx.arc(center, center, umbRadius, Math.PI, 0);
-                    ctx.moveTo(center - umbRadius, center);
-                    ctx.lineTo(center + umbRadius, center);
                     ctx.moveTo(center, center);
                     ctx.lineTo(center, center + umbRadius * 1.5);
                     ctx.moveTo(center, center + umbRadius * 1.5);
@@ -114,11 +136,27 @@
             }
             ctx.stroke();
         }
+        
+        function drawCrack() {
+            const ctx = gameCtx;
+            const size = gameCanvas.width;
+            ctx.clearRect(0,0,size,size);
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.lineWidth = 3;
+            for(let i = 0; i < 7; i++){
+                ctx.beginPath();
+                ctx.moveTo(size/2, size/2);
+                ctx.lineTo(Math.random() * size, Math.random() * size);
+                ctx.stroke();
+            }
+        }
 
+        // --- Lógica de MediaPipe y Cámara ---
         function onResults(results) {
             if (loadingElement.style.display !== 'none') {
                 loadingElement.style.display = 'none';
                 document.getElementById('game-ui').style.display = 'flex';
+                timerElement.style.display = 'block';
             }
 
             arCanvas.width = videoElement.videoWidth;
@@ -129,19 +167,24 @@
             arCtx.drawImage(videoElement, 0, 0, arCanvas.width, arCanvas.height);
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0]; // Usar solo la primera mano detectada
+                const landmarks = results.multiHandLandmarks[0];
                 drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0, 255, 0, 0.5)', lineWidth: 5 });
-                drawLandmarks(arCtx, landmarks, { color: 'rgba(255, 0, 0, 0.7)', lineWidth: 2 });
                 
-                // Usar el dedo índice para cortar
-                const indexFingerTip = landmarks[8];
+                const indexFingerTip = landmarks[8]; // Punto 8 es la punta del dedo índice
+                
+                const arCanvasRect = arCanvas.getBoundingClientRect();
                 const gameContainerRect = document.querySelector('.game-container').getBoundingClientRect();
-                
-                // Convertir coordenadas normalizadas de la IA (0.0 a 1.0) a coordenadas del canvas del juego
-                const x = indexFingerTip.x * gameCanvas.width;
-                const y = indexFingerTip.y * gameCanvas.height;
 
-                checkCut(x, y);
+                // Coordenadas del dedo en la vista de la cámara (0.0 a 1.0)
+                // Invertimos X si la cámara es frontal
+                const fingerX_norm = selectedFacingMode === 'user' ? 1 - indexFingerTip.x : indexFingerTip.x;
+                const fingerY_norm = indexFingerTip.y;
+                
+                // Mapear coordenadas de la cámara al contenedor del juego
+                const x_game = (fingerX_norm * arCanvasRect.width) - gameContainerRect.left;
+                const y_game = (fingerY_norm * arCanvasRect.height) - gameContainerRect.top;
+
+                checkCut(x_game, y_game);
             } else {
                  isTracing = false;
             }
@@ -149,26 +192,28 @@
         }
         
         async function startGame(shape) {
-            overlay.querySelector('#shape-selector').style.display = 'none';
+            overlay.querySelector('.content').style.display = 'none';
             loadingElement.style.display = 'block';
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720, facingMode: 'user' } // Usar cámara frontal
+                    video: { width: 1280, height: 720, facingMode: selectedFacingMode }
                 });
                 videoElement.srcObject = stream;
-                videoElement.play();
-
+                
                 videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    
                     const gameContainerSize = document.querySelector('.game-container').offsetWidth;
                     gameCanvas.width = gameContainerSize;
                     gameCanvas.height = gameContainerSize;
-
                     drawShape(gameCtx, shape, gameContainerSize);
 
-                    hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-                    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-                    hands.onResults(onResults);
+                    if (!hands) {
+                        hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                        hands.onResults(onResults);
+                    }
 
                     sendToHands();
                     
@@ -180,26 +225,28 @@
 
             } catch (err) {
                 loadingElement.style.display = 'none';
+                overlay.querySelector('.content').style.display = 'block';
                 errorElement.style.display = 'block';
-                errorElement.textContent = `Error al iniciar la cámara: ${err.message}. Asegúrate de haber dado permiso.`;
-                console.error(err);
+                errorElement.textContent = `Error: ${err.message}. Asegúrate de dar permiso a la cámara.`;
             }
         }
         
         async function sendToHands() {
-            if (!videoElement.paused && !videoElement.ended) {
+            if (gameActive && !videoElement.paused && !videoElement.ended) {
                 await hands.send({ image: videoElement });
             }
-            animationFrameId = requestAnimationFrame(sendToHands);
+            if(gameActive) {
+                animationFrameId = requestAnimationFrame(sendToHands);
+            }
         }
 
         function checkCut(x, y) {
             if (!gameActive) return;
 
             const pixelData = gameCtx.getImageData(x, y, 1, 1).data;
-            const isOnPath = pixelData[3] > 0; // El path tiene alpha, el fondo no
+            const isOnPath = pixelData[3] > 0;
 
-            if (!isOnPath && isTracing) { // Solo pierde si se sale MIENTRAS traza
+            if (!isOnPath && isTracing) {
                 endGame(false);
             } else if (isOnPath) {
                 if (!isTracing) {
@@ -224,16 +271,17 @@
             clearInterval(timerInterval);
             cancelAnimationFrame(animationFrameId);
             
-            const h1 = overlay.querySelector('h1');
-            const p = overlay.querySelector('p');
-            const crackImg = document.getElementById('crack-img');
+            const contentDiv = overlay.querySelector('.content');
+            const h1 = contentDiv.querySelector('h1');
+            const p = contentDiv.querySelector('p');
+            
+            contentDiv.style.display = 'block';
 
             if (isWin) {
                 h1.textContent = "¡Felicidades!";
                 p.textContent = "Has cortado la galleta a la perfección.";
             } else {
-                crackImg.style.display = 'block';
-                setTimeout(() => crackImg.style.opacity = '1', 50);
+                drawCrack();
                 h1.textContent = "¡Has Perdido!";
                 p.textContent = "La galleta se ha roto.";
             }
