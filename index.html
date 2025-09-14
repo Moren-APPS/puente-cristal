@@ -7,10 +7,10 @@
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', sans-serif; background-color: #0d0d0d; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        video { display: none; }
+        video { display: none; } /* El video real está oculto, solo lo usamos como fuente */
         #ar-canvas, #game-canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 100%; max-height: 100%; border-radius: 10px; }
-        #ar-canvas { transform: translate(-50%, -50%) scaleX(-1); z-index: 1; }
-        #game-canvas { z-index: 2; pointer-events: none; }
+        #ar-canvas { z-index: 1; } /* Lienzo para la cámara y el esqueleto de la mano */
+        #game-canvas { z-index: 2; pointer-events: none; } /* Lienzo para la galleta y el corte */
         #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; color: white; text-shadow: 2px 2px 4px #000; z-index: 30; display: none; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 100; padding: 20px; box-sizing: border-box; }
         .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); max-width: 90%; }
@@ -54,7 +54,6 @@
     <div id="timer">60</div>
 
     <script>
-        // --- Elementos del DOM ---
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
         const arCanvas = document.getElementById('ar-canvas');
@@ -64,13 +63,11 @@
         const loadingElement = document.getElementById('loading');
         const errorElement = document.getElementById('errorMessage');
         const timerElement = document.getElementById('timer');
-
-        // --- Variables de estado del juego ---
+        
         let hands, animationFrameId;
         let gameActive = false, timerInterval, timeLeft = 60, isTracing = false;
-        let selectedFacingMode = 'user'; // 'user' para frontal, 'environment' para trasera
+        let selectedFacingMode = 'user';
 
-        // --- Asignación de Eventos ---
         document.getElementById('btn-front-cam').onclick = () => selectCamera('user');
         document.getElementById('btn-back-cam').onclick = () => selectCamera('environment');
         document.getElementById('btn-triangle').onclick = () => startGame('triangle');
@@ -81,21 +78,17 @@
             selectedFacingMode = mode;
             document.getElementById('btn-front-cam').classList.toggle('selected', mode === 'user');
             document.getElementById('btn-back-cam').classList.toggle('selected', mode === 'environment');
-            // Al cambiar de cámara, la escala de la imagen se invierte o no
             arCanvas.style.transform = `translate(-50%, -50%) ${mode === 'user' ? 'scaleX(-1)' : ''}`;
         }
         
-        // --- Lógica de Dibujo Vectorial ---
         function drawShape(ctx, shape, size) {
             const center = size / 2;
             ctx.clearRect(0, 0, size, size);
-            // Dibujar galleta de fondo semi-transparente
-            ctx.fillStyle = 'rgba(240, 194, 123, 0.75)';
+            ctx.fillStyle = 'rgba(240, 194, 123, 0.75)'; // Galleta semi-transparente
             ctx.beginPath();
             ctx.arc(center, center, size * 0.45, 0, Math.PI * 2);
             ctx.fill();
-            // Dibujar contorno de la forma
-            ctx.strokeStyle = 'rgba(191, 123, 40, 0.85)';
+            ctx.strokeStyle = 'rgba(191, 123, 40, 0.9)';
             ctx.lineWidth = size * 0.02;
             ctx.beginPath();
 
@@ -128,6 +121,8 @@
                 case 'umbrella':
                     const umbRadius = size * 0.2;
                     ctx.arc(center, center, umbRadius, Math.PI, 0);
+                    ctx.moveTo(center - umbRadius, center);
+                    ctx.lineTo(center + umbRadius, center);
                     ctx.moveTo(center, center);
                     ctx.lineTo(center, center + umbRadius * 1.5);
                     ctx.moveTo(center, center + umbRadius * 1.5);
@@ -151,7 +146,6 @@
             }
         }
 
-        // --- Lógica de MediaPipe y Cámara ---
         function onResults(results) {
             if (loadingElement.style.display !== 'none') {
                 loadingElement.style.display = 'none';
@@ -170,19 +164,16 @@
                 const landmarks = results.multiHandLandmarks[0];
                 drawConnectors(arCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0, 255, 0, 0.5)', lineWidth: 5 });
                 
-                const indexFingerTip = landmarks[8]; // Punto 8 es la punta del dedo índice
+                const indexFingerTip = landmarks[8];
                 
                 const arCanvasRect = arCanvas.getBoundingClientRect();
                 const gameContainerRect = document.querySelector('.game-container').getBoundingClientRect();
 
-                // Coordenadas del dedo en la vista de la cámara (0.0 a 1.0)
-                // Invertimos X si la cámara es frontal
-                const fingerX_norm = selectedFacingMode === 'user' ? 1 - indexFingerTip.x : indexFingerTip.x;
+                const fingerX_norm = selectedFacingMode === 'user' ? (1 - indexFingerTip.x) : indexFingerTip.x;
                 const fingerY_norm = indexFingerTip.y;
                 
-                // Mapear coordenadas de la cámara al contenedor del juego
-                const x_game = (fingerX_norm * arCanvasRect.width) - gameContainerRect.left;
-                const y_game = (fingerY_norm * arCanvasRect.height) - gameContainerRect.top;
+                const x_game = ((fingerX_norm * arCanvasRect.width) - gameContainerRect.left) * (gameCanvas.width / gameContainerRect.width);
+                const y_game = ((fingerY_norm * arCanvasRect.height) - gameContainerRect.top) * (gameCanvas.height / gameContainerRect.height);
 
                 checkCut(x_game, y_game);
             } else {
@@ -196,6 +187,7 @@
             loadingElement.style.display = 'block';
 
             try {
+                // ESTA ES LA LÓGICA DE PERMISOS QUE SÍ FUNCIONA
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 1280, height: 720, facingMode: selectedFacingMode }
                 });
@@ -211,7 +203,7 @@
 
                     if (!hands) {
                         hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-                        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
                         hands.onResults(onResults);
                     }
 
@@ -220,6 +212,7 @@
                     timeLeft = 60;
                     timerElement.textContent = timeLeft;
                     gameActive = true;
+                    isTracing = false;
                     timerInterval = setInterval(updateTimer, 1000);
                 };
 
@@ -249,7 +242,7 @@
             if (!isOnPath && isTracing) {
                 endGame(false);
             } else if (isOnPath) {
-                if (!isTracing) {
+                 if (!isTracing) {
                     isTracing = true;
                 }
             }
@@ -260,7 +253,7 @@
             timeLeft--;
             timerElement.textContent = timeLeft;
             if (timeLeft <= 0) {
-                endGame(false);
+                endGame(true); // Se considera victoria si se acaba el tiempo sin romper la galleta
             }
         }
 
@@ -269,8 +262,15 @@
             
             gameActive = false;
             clearInterval(timerInterval);
-            cancelAnimationFrame(animationFrameId);
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
             
+            // Detener la cámara
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+            }
+
             const contentDiv = overlay.querySelector('.content');
             const h1 = contentDiv.querySelector('h1');
             const p = contentDiv.querySelector('p');
@@ -279,11 +279,11 @@
 
             if (isWin) {
                 h1.textContent = "¡Felicidades!";
-                p.textContent = "Has cortado la galleta a la perfección.";
+                p.innerHTML = "Has cortado la galleta a la perfección.";
             } else {
                 drawCrack();
                 h1.textContent = "¡Has Perdido!";
-                p.textContent = "La galleta se ha roto.";
+                p.innerHTML = "La galleta se ha roto.";
             }
             
             overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
