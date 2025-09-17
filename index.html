@@ -18,7 +18,21 @@
         p { max-width: 80%; line-height: 1.5; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #007BFF; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
         #loading { display: none; z-index: 5; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
-        #switchCameraButton { display: none; position: absolute; top: 20px; right: 20px; z-index: 100; padding: 10px 15px; font-size: 1.5em; background-color: rgba(0, 0, 0, 0.5); border: 2px solid white; border-radius: 50%; cursor: pointer; }
+        
+        /* --- CAMBIO REALIZADO AQUÍ --- */
+        #switchCameraButton {
+            display: none; 
+            position: absolute;
+            bottom: 20px; /* Se cambió 'top' por 'bottom' */
+            right: 20px;
+            z-index: 100;
+            padding: 10px 15px;
+            font-size: 1.5em;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -62,20 +76,20 @@
         let activeStream;
         let handsInitialized = false;
 
-        // --- NUEVO: Variables de estado para la paleta de colores ---
+        // --- Variables de estado para la paleta de colores ---
         const paletteIcon = { x: 30, y: 30, width: 60, height: 60, emoji: '🎨' };
         const colors = ['#FF1744', '#00E676', '#2979FF', '#FFFF00', '#FFFFFF', '#000000']; // Rojo, Verde, Azul, Amarillo, Blanco, Negro
         let isPaletteOpen = false;
         let colorSwatches = []; // Aquí guardaremos las posiciones de cada color
         let touchCooldown = 0; // Para evitar toques accidentales muy rápidos
 
-        // --- NUEVO: Función para detectar si un punto está dentro de un rectángulo ---
+        // --- Función para detectar si un punto está dentro de un rectángulo ---
         function isPointInsideRect(point, rect) {
             return point.x > rect.x && point.x < rect.x + rect.width &&
                    point.y > rect.y && point.y < rect.y + rect.height;
         }
 
-        // --- NUEVO: Función para dibujar la interfaz de la paleta ---
+        // --- Función para dibujar la interfaz de la paleta ---
         function drawUI(ctx, point) {
             // Dibuja el ícono principal
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
@@ -129,11 +143,15 @@
                 const indexTip = landmarks[8];
                 const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
 
-                if (isFirstFrame) { /* ... inicialización del punto suavizado ... */ }
+                if (isFirstFrame) { 
+                    smoothedPoint.x = currentPoint.x;
+                    smoothedPoint.y = currentPoint.y;
+                    isFirstFrame = false; 
+                }
                 smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
                 smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
 
-                // --- NUEVO: Lógica de interacción con la UI ---
+                // --- Lógica de interacción con la UI ---
                 if (touchCooldown > 0) touchCooldown--;
 
                 if (isPaletteOpen) {
@@ -187,15 +205,25 @@
         }
 
         // --- Funciones de inicio y bucle principal (con pequeños ajustes) ---
-        async function startCamera(facingMode) { /* ... (sin cambios) ... */ }
-        async function sendToHands() { /* ... (sin cambios) ... */ }
-        startButton.addEventListener('click', () => { overlay.style.display = 'none'; startCamera(currentFacingMode); });
-        switchCameraButton.addEventListener('click', () => { currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user'; startCamera(currentFacingMode); });
-        function isPinched(landmarks) { const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; }
-        function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
-        async function startCamera(facingMode) { loadingElement.style.display = 'block'; if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); } const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: facingMode } } }; try { const stream = await navigator.mediaDevices.getUserMedia(constraints); activeStream = stream; videoElement.srcObject = stream; videoElement.onloadedmetadata = () => { videoElement.play(); loadingElement.style.display = 'none'; switchCameraButton.style.display = 'block'; const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight; outputCanvas.width = videoWidth; outputCanvas.height = videoHeight; drawingCanvas.width = videoWidth; drawingCanvas.height = videoHeight; drawingCtx.strokeStyle = '#00FFFF'; drawingCtx.lineWidth = 6; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; if (!handsInitialized) { hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`}); hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); hands.onResults(onResults); sendToHands(); handsInitialized = true; } }; } catch (err) { loadingElement.style.display = 'none'; console.error("Error al cambiar de cámara:", err); alert(`No se pudo acceder a la cámara '${facingMode}'. Es posible que tu dispositivo no la tenga o que el navegador no lo soporte.`); } }
-        async function sendToHands() { if (videoElement.readyState >= 3) { await hands.send({ image: videoElement }); } requestAnimationFrame(sendToHands); }
-        if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } // Snippet para completar la función onResults
+        async function startCamera(facingMode) {
+             loadingElement.style.display = 'block'; if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); } const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: facingMode } } }; try { const stream = await navigator.mediaDevices.getUserMedia(constraints); activeStream = stream; videoElement.srcObject = stream; videoElement.onloadedmetadata = () => { videoElement.play(); loadingElement.style.display = 'none'; switchCameraButton.style.display = 'block'; const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight; outputCanvas.width = videoWidth; outputCanvas.height = videoHeight; drawingCanvas.width = videoWidth; drawingCanvas.height = videoHeight; drawingCtx.strokeStyle = '#00FFFF'; drawingCtx.lineWidth = 6; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; if (!handsInitialized) { hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`}); hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); hands.onResults(onResults); sendToHands(); handsInitialized = true; } }; } catch (err) { loadingElement.style.display = 'none'; console.error("Error al cambiar de cámara:", err); alert(`No se pudo acceder a la cámara '${facingMode}'. Es posible que tu dispositivo no la tenga o que el navegador no lo soporte.`); } 
+        }
+        async function sendToHands() { 
+            if (videoElement.readyState >= 3) { await hands.send({ image: videoElement }); } requestAnimationFrame(sendToHands); 
+        }
+        startButton.addEventListener('click', () => { 
+            overlay.style.display = 'none'; startCamera(currentFacingMode); 
+        });
+        switchCameraButton.addEventListener('click', () => { 
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user'; startCamera(currentFacingMode); 
+        });
+        function isPinched(landmarks) { 
+            const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; 
+        }
+        function isOpenPalm(landmarks) { 
+            const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; 
+        }
+
     </script>
 </body>
 </html>
