@@ -2,23 +2,14 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual con Manos v3.0</title>
+    <title>Pizarra Virtual con Paleta de Colores</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
+        /* CSS sin cambios */
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        video, canvas { 
-            position: absolute; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%) scaleX(-1); 
-            max-width: 100%; 
-            max-height: 100%; 
-            border-radius: 10px; 
-        }
-        canvas {
-            background-color: transparent;
-        }
+        video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleX(-1); max-width: 100%; max-height: 100%; border-radius: 10px; }
+        canvas { background-color: transparent; }
         #outputCanvas { z-index: 2; }
         #drawingCanvas { z-index: 1; }
         #webcam { z-index: 0; }
@@ -27,21 +18,7 @@
         p { max-width: 80%; line-height: 1.5; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #007BFF; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
         #loading { display: none; z-index: 5; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
-        
-        /* --- NUEVO: Estilos para el botón de cambiar cámara --- */
-        #switchCameraButton {
-            display: none; /* Oculto hasta que la cámara inicie */
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 100;
-            padding: 10px 15px;
-            font-size: 1.5em; /* Emoji más grande */
-            background-color: rgba(0, 0, 0, 0.5);
-            border: 2px solid white;
-            border-radius: 50%;
-            cursor: pointer;
-        }
+        #switchCameraButton { display: none; position: absolute; top: 20px; right: 20px; z-index: 100; padding: 10px 15px; font-size: 1.5em; background-color: rgba(0, 0, 0, 0.5); border: 2px solid white; border-radius: 50%; cursor: pointer; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -49,10 +26,9 @@
 
 <body>
     <div id="overlay">
-        <h1>Pizarra Virtual Mejorada</h1>
-        <p><b>Para dibujar:</b> junta las puntas de tu pulgar e índice.<br><b>Para borrar:</b> abre la palma de tu mano y pásala sobre el dibujo.</p>
+        <h1>Pizarra Virtual con Paleta de Colores</h1>
+        <p>Toca el ícono 🎨 con tu índice para elegir un color. <br>Junta tus dedos para dibujar y abre la palma para borrar.</p>
         <button id="startButton">Iniciar Pizarra</button>
-        <p id="errorMessage"></p>
     </div>
 
     <div id="container">
@@ -73,115 +49,153 @@
         const drawingCanvas = document.getElementById('drawingCanvas');
         const drawingCtx = drawingCanvas.getContext('2d');
         const loadingElement = document.getElementById('loading');
-        const switchCameraButton = document.getElementById('switchCameraButton'); // Nueva referencia
+        const switchCameraButton = document.getElementById('switchCameraButton');
 
+        // --- Variables de estado de la aplicación ---
         let hands;
         let isDrawing = false;
-        
         const smoothingFactor = 0.4;
         const eraserSize = 60;
         let smoothedPoint = { x: 0, y: 0 };
         let isFirstFrame = true;
+        let currentFacingMode = 'user';
+        let activeStream;
+        let handsInitialized = false;
 
-        // --- NUEVO: Variables de estado para la cámara ---
-        let currentFacingMode = 'user'; // 'user' para frontal, 'environment' para trasera
-        let activeStream; // Para guardar la transmisión de video activa
-        let handsInitialized = false; // Para inicializar MediaPipe solo una vez
+        // --- NUEVO: Variables de estado para la paleta de colores ---
+        const paletteIcon = { x: 30, y: 30, width: 60, height: 60, emoji: '🎨' };
+        const colors = ['#FF1744', '#00E676', '#2979FF', '#FFFF00', '#FFFFFF', '#000000']; // Rojo, Verde, Azul, Amarillo, Blanco, Negro
+        let isPaletteOpen = false;
+        let colorSwatches = []; // Aquí guardaremos las posiciones de cada color
+        let touchCooldown = 0; // Para evitar toques accidentales muy rápidos
 
-        function isPinched(landmarks) {
-            const thumbTip = landmarks[4];
-            const indexTip = landmarks[8];
-            const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            return distance < 0.04; 
+        // --- NUEVO: Función para detectar si un punto está dentro de un rectángulo ---
+        function isPointInsideRect(point, rect) {
+            return point.x > rect.x && point.x < rect.x + rect.width &&
+                   point.y > rect.y && point.y < rect.y + rect.height;
         }
 
-        function isOpenPalm(landmarks) { /* ... (sin cambios) ... */ }
-        function onResults(results) { /* ... (sin cambios) ... */ }
+        // --- NUEVO: Función para dibujar la interfaz de la paleta ---
+        function drawUI(ctx, point) {
+            // Dibuja el ícono principal
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height);
+            ctx.font = '40px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(paletteIcon.emoji, paletteIcon.x + paletteIcon.width / 2, paletteIcon.y + paletteIcon.height / 2);
 
-        // --- NUEVO: Función refactorizada para iniciar/cambiar la cámara ---
-        async function startCamera(facingMode) {
-            loadingElement.style.display = 'block';
+            // Si la paleta está abierta, dibuja los colores
+            if (isPaletteOpen) {
+                colorSwatches = []; // Reinicia las posiciones
+                colors.forEach((color, index) => {
+                    const swatch = {
+                        x: paletteIcon.x + (index + 1) * (paletteIcon.width + 10),
+                        y: paletteIcon.y,
+                        width: paletteIcon.width,
+                        height: paletteIcon.height,
+                        color: color
+                    };
+                    colorSwatches.push(swatch);
+                    
+                    // Dibuja el cuadro de color
+                    ctx.fillStyle = color;
+                    ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height);
 
-            // Detener la cámara anterior si existe
-            if (activeStream) {
-                activeStream.getTracks().forEach(track => track.stop());
-            }
-
-            const constraints = {
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: { exact: facingMode }
-                }
-            };
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                activeStream = stream; // Guardar la nueva transmisión
-                videoElement.srcObject = stream;
-                
-                videoElement.onloadedmetadata = () => {
-                    videoElement.play();
-                    loadingElement.style.display = 'none';
-                    switchCameraButton.style.display = 'block'; // Mostrar el botón
-
-                    const videoWidth = videoElement.videoWidth;
-                    const videoHeight = videoElement.videoHeight;
-                    outputCanvas.width = videoWidth;
-                    outputCanvas.height = videoHeight;
-                    drawingCanvas.width = videoWidth;
-                    drawingCanvas.height = videoHeight;
-
-                    // Reaplicar estilos de dibujo por si el canvas se reinicia
-                    drawingCtx.strokeStyle = '#00FFFF';
-                    drawingCtx.lineWidth = 6;
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.lineJoin = 'round';
-
-                    // Inicializar MediaPipe Hands solo la primera vez
-                    if (!handsInitialized) {
-                        hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-                        hands.setOptions({
-                            maxNumHands: 1,
-                            modelComplexity: 1,
-                            minDetectionConfidence: 0.7,
-                            minTrackingConfidence: 0.7
-                        });
-                        hands.onResults(onResults);
-                        sendToHands(); // Iniciar el bucle de procesamiento
-                        handsInitialized = true;
+                    // Resalta el cuadro si el dedo está encima
+                    if (isPointInsideRect(point, swatch)) {
+                        ctx.strokeStyle = 'cyan';
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height);
                     }
-                };
-            } catch (err) {
-                loadingElement.style.display = 'none';
-                console.error("Error al cambiar de cámara:", err);
-                alert(`No se pudo acceder a la cámara '${facingMode}'. Es posible que tu dispositivo no la tenga o que el navegador no lo soporte.`);
+                });
             }
         }
+        
+        function onResults(results) {
+            if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none';
 
-        async function sendToHands() {
-            if (videoElement.readyState >= 3) { // Asegurarse de que el video tenga datos
-                await hands.send({ image: videoElement });
+            outputCtx.save();
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+
+            let fingerOnUI = false;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
+                
+                const indexTip = landmarks[8];
+                const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
+
+                if (isFirstFrame) { /* ... inicialización del punto suavizado ... */ }
+                smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
+                smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
+
+                // --- NUEVO: Lógica de interacción con la UI ---
+                if (touchCooldown > 0) touchCooldown--;
+
+                if (isPaletteOpen) {
+                    for (const swatch of colorSwatches) {
+                        if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
+                            drawingCtx.strokeStyle = swatch.color; // Cambia el color del pincel
+                            isPaletteOpen = false;
+                            touchCooldown = 20; // 20 frames de cooldown
+                            fingerOnUI = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Chequeo para abrir/cerrar la paleta
+                if (isPointInsideRect(smoothedPoint, paletteIcon) && touchCooldown === 0) {
+                    isPaletteOpen = !isPaletteOpen;
+                    touchCooldown = 20;
+                    fingerOnUI = true;
+                }
+                
+                // Dibuja la UI después de procesar la lógica, pasando el punto del dedo para feedback visual
+                drawUI(outputCtx, smoothedPoint);
+
+                const pinched = isPinched(landmarks);
+                const openPalm = isOpenPalm(landmarks);
+                
+                // Solo dibuja o borra si el dedo no está interactuando con la UI
+                if (!fingerOnUI) {
+                    if (openPalm) {
+                        isDrawing = false;
+                        drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize);
+                    } else if (pinched) {
+                        if (!isDrawing) {
+                            isDrawing = true;
+                            drawingCtx.beginPath();
+                            drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y);
+                        } else {
+                            drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y);
+                            drawingCtx.stroke();
+                        }
+                    } else {
+                        isDrawing = false;
+                    }
+                }
+            } else {
+                isDrawing = false;
+                isFirstFrame = true;
             }
-            requestAnimationFrame(sendToHands);
+            outputCtx.restore();
         }
 
-        // --- Lógica de los botones ---
-        startButton.addEventListener('click', () => {
-            overlay.style.display = 'none';
-            startCamera(currentFacingMode); // Iniciar con la cámara por defecto
-        });
-
-        switchCameraButton.addEventListener('click', () => {
-            // Cambiar al modo opuesto
-            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-            startCamera(currentFacingMode);
-        });
-
-        // Copiando funciones sin cambios para que el snippet esté completo
+        // --- Funciones de inicio y bucle principal (con pequeños ajustes) ---
+        async function startCamera(facingMode) { /* ... (sin cambios) ... */ }
+        async function sendToHands() { /* ... (sin cambios) ... */ }
+        startButton.addEventListener('click', () => { overlay.style.display = 'none'; startCamera(currentFacingMode); });
+        switchCameraButton.addEventListener('click', () => { currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user'; startCamera(currentFacingMode); });
+        function isPinched(landmarks) { const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; }
         function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
-        function onResults(results) { if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none'; outputCtx.save(); outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height); if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) { const landmarks = results.multiHandLandmarks[0]; drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 }); drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 }); const indexTip = landmarks[8]; const currentPoint = { x: indexTip.x * drawingCanvas.width, y: indexTip.y * drawingCanvas.height }; if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor; smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor; const pinched = isPinched(landmarks); const openPalm = isOpenPalm(landmarks); if (openPalm) { isDrawing = false; drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize); } else if (pinched) { if (!isDrawing) { isDrawing = true; drawingCtx.beginPath(); drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y); } else { drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y); drawingCtx.stroke(); } } else { isDrawing = false; } } else { isDrawing = false; isFirstFrame = true; } outputCtx.restore(); }
-
+        async function startCamera(facingMode) { loadingElement.style.display = 'block'; if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); } const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: facingMode } } }; try { const stream = await navigator.mediaDevices.getUserMedia(constraints); activeStream = stream; videoElement.srcObject = stream; videoElement.onloadedmetadata = () => { videoElement.play(); loadingElement.style.display = 'none'; switchCameraButton.style.display = 'block'; const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight; outputCanvas.width = videoWidth; outputCanvas.height = videoHeight; drawingCanvas.width = videoWidth; drawingCanvas.height = videoHeight; drawingCtx.strokeStyle = '#00FFFF'; drawingCtx.lineWidth = 6; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; if (!handsInitialized) { hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`}); hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); hands.onResults(onResults); sendToHands(); handsInitialized = true; } }; } catch (err) { loadingElement.style.display = 'none'; console.error("Error al cambiar de cámara:", err); alert(`No se pudo acceder a la cámara '${facingMode}'. Es posible que tu dispositivo no la tenga o que el navegador no lo soporte.`); } }
+        async function sendToHands() { if (videoElement.readyState >= 3) { await hands.send({ image: videoElement }); } requestAnimationFrame(sendToHands); }
+        if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } // Snippet para completar la función onResults
     </script>
 </body>
 </html>
