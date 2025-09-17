@@ -2,13 +2,11 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual con Manos</title>
+    <title>Pizarra Virtual con Manos v2</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
-        /* CAMBIO: Ahora posicionamos el video y los canvas de forma similar */
         video, canvas { 
             position: absolute; 
             top: 50%; 
@@ -18,25 +16,12 @@
             max-height: 100%; 
             border-radius: 10px; 
         }
-
-        /* CAMBIO: Hacemos los canvas transparentes para ver lo que hay detrás */
         canvas {
             background-color: transparent;
         }
-
-        /* CAMBIO: El canvas de salida (landmarks) debe estar encima de todo */
-        #outputCanvas {
-            z-index: 2;
-        }
-        /* El canvas de dibujo está en medio */
-        #drawingCanvas {
-            z-index: 1;
-        }
-        /* El video es el fondo */
-        #webcam {
-            z-index: 0;
-        }
-
+        #outputCanvas { z-index: 2; }
+        #drawingCanvas { z-index: 1; }
+        #webcam { z-index: 0; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; }
         h1 { font-size: 1.5em; margin-bottom: 20px; }
         p { max-width: 80%; line-height: 1.5; }
@@ -50,8 +35,8 @@
 
 <body>
     <div id="overlay">
-        <h1>Pizarra Virtual con Manos</h1>
-        <p><b>Para dibujar:</b> junta las puntas de tu pulgar e índice como si sostuvieras un lápiz.<br><b>Para borrar todo:</b> abre la palma de tu mano completamente.</p>
+        <h1>Pizarra Virtual Mejorada</h1>
+        <p><b>Para dibujar:</b> junta las puntas de tu pulgar e índice.<br><b>Para borrar:</b> abre la palma de tu mano y pásala sobre el dibujo.</p>
         <button id="startButton">Iniciar Pizarra</button>
         <p id="errorMessage"></p>
     </div>
@@ -64,6 +49,7 @@
     </div>
 
     <script>
+        // ... (Referencias a elementos HTML sin cambios)
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
@@ -75,9 +61,15 @@
         const errorElement = document.getElementById('errorMessage');
 
         let hands;
-        let animationFrameId;
         let isDrawing = false;
-        
+
+        // --- NUEVO: Parámetros de configuración para suavizado y borrador ---
+        const smoothingFactor = 0.4; // 0 = más lento y suave, 1 = más rápido y tembloroso
+        const eraserSize = 60;       // Tamaño en píxeles del borrador
+        let smoothedPoint = { x: 0, y: 0 }; // Almacenará la posición suavizada de la punta del dedo
+        let isFirstFrame = true; // Para inicializar la posición suavizada correctamente
+
+
         function isPinched(landmarks) {
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
@@ -89,23 +81,16 @@
             const fingerTips = [8, 12, 16, 20];
             const fingerPips = [6, 10, 14, 18];
             for (let i = 0; i < fingerTips.length; i++) {
-                if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) {
-                    return false;
-                }
+                if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false;
             }
             return true;
         }
 
         function onResults(results) {
-            if (loadingElement.style.display !== 'none') {
-                loadingElement.style.display = 'none';
-            }
+            if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none';
 
             outputCtx.save();
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            
-            // CAMBIO: YA NO DIBUJAMOS EL VIDEO AQUÍ. EL VIDEO AHORA ES SU PROPIO ELEMENTO HTML DE FONDO.
-            // outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
@@ -113,37 +98,60 @@
                 drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
                 drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
 
+                // --- LÓGICA DE SUAVIZADO ---
+                const indexTip = landmarks[8]; // La punta del dedo índice
+                const currentPoint = {
+                    x: indexTip.x * drawingCanvas.width,
+                    y: indexTip.y * drawingCanvas.height
+                };
+
+                // Si es el primer fotograma, inicializamos el punto suavizado en la posición actual
+                if (isFirstFrame) {
+                    smoothedPoint.x = currentPoint.x;
+                    smoothedPoint.y = currentPoint.y;
+                    isFirstFrame = false;
+                }
+
+                // Aplicamos el filtro de suavizado (Promedio Móvil Exponencial)
+                smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
+                smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
+
+                // --- LÓGICA DE DIBUJO Y BORRADO (usando el punto suavizado) ---
                 const pinched = isPinched(landmarks);
                 const openPalm = isOpenPalm(landmarks);
                 
                 if (openPalm) {
-                    drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                    isDrawing = false;
+                    isDrawing = false; // Nos aseguramos de no estar dibujando
+                    // NUEVO: Lógica del borrador localizado
+                    drawingCtx.clearRect(
+                        smoothedPoint.x - eraserSize / 2, 
+                        smoothedPoint.y - eraserSize / 2, 
+                        eraserSize, 
+                        eraserSize
+                    );
                 } 
                 else if (pinched) {
-                    const indexTip = landmarks[8];
-                    const currentX = indexTip.x * drawingCanvas.width;
-                    const currentY = indexTip.y * drawingCanvas.height;
-
                     if (!isDrawing) {
                         isDrawing = true;
                         drawingCtx.beginPath();
-                        drawingCtx.moveTo(currentX, currentY);
+                        drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y);
                     } else {
-                        drawingCtx.lineTo(currentX, currentY);
+                        drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y);
                         drawingCtx.stroke();
                     }
                 } 
                 else {
-                    isDrawing = false;
+                    isDrawing = false; // Levantar el lápiz
                 }
             } else {
-                isDrawing = false;
+                isDrawing = false; // Si no hay manos, no dibujar
+                isFirstFrame = true; // Reiniciar para la próxima vez que aparezca una mano
             }
             outputCtx.restore();
         }
 
         async function startApp() {
+            // ... (Función startApp sin cambios)
             overlay.style.display = 'none';
             loadingElement.style.display = 'block';
 
@@ -155,7 +163,7 @@
                 videoElement.play();
 
                 videoElement.onloadedmetadata = () => {
-                    videoElement.style.display = 'block'; // Hacemos visible el elemento de video
+                    videoElement.style.display = 'block';
                     const videoWidth = videoElement.videoWidth;
                     const videoHeight = videoElement.videoHeight;
                     outputCanvas.width = videoWidth;
@@ -163,14 +171,12 @@
                     drawingCanvas.width = videoWidth;
                     drawingCanvas.height = videoHeight;
 
-                    drawingCtx.strokeStyle = '#00FFFF'; // Cian
+                    drawingCtx.strokeStyle = '#00FFFF';
                     drawingCtx.lineWidth = 6;
                     drawingCtx.lineCap = 'round';
                     drawingCtx.lineJoin = 'round';
 
-                    hands = new Hands({locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-                    }});
+                    hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
                     
                     hands.setOptions({
                         maxNumHands: 1,
@@ -184,6 +190,7 @@
                 };
 
             } catch (err) {
+                // ... (Manejo de errores sin cambios)
                 loadingElement.style.display = 'none';
                 overlay.style.display = 'flex';
                 errorElement.style.display = 'block';
@@ -196,7 +203,7 @@
             if (!videoElement.paused && !videoElement.ended) {
                 await hands.send({ image: videoElement });
             }
-            animationFrameId = requestAnimationFrame(sendToHands);
+            requestAnimationFrame(sendToHands);
         }
 
         startButton.addEventListener('click', startApp);
