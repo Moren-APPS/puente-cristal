@@ -2,255 +2,179 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Reto Dalgona: Hand Tracking</title>
+    <title>Prueba de Seguimiento de Manos con Objeto Interactivo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; font-family: sans-serif; background-color: #111; color: white; overflow: hidden; }
-        .container { position: relative; width: 100vw; height: 100vh; }
-        .input_video { display: none; }
-        .output_canvas { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; background-color: rgba(0,0,0,0.8); z-index: 100; }
-        #loading { display: none; font-size: 1.5em; }
-        .content { background-color: rgba(20, 20, 20, 0.9); padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(255, 165, 0, 0.5); border: 1px solid rgba(255, 165, 0, 0.7); max-width: 90%; }
-        h1 { font-size: 2.5em; margin-bottom: 10px; color: #FFA500; text-shadow: 0 0 10px #FFA500; }
-        button { padding: 12px 24px; font-size: 1.1em; background-color: #FFA500; color: #0d0d0d; border: none; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-weight: bold; margin: 5px; }
-        #timer { position: absolute; top: 20px; right: 20px; font-size: 2em; text-shadow: 2px 2px 4px #000; z-index: 30; display: none; }
-        #game-canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 100%; max-height: 100%; border-radius: 10px; z-index: 2; pointer-events: none; }
-        #errorMessage { color: #f87171; margin-top: 20px; max-width: 80%; }
+        body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
+        #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleX(-1); max-width: 100%; max-height: 100%; border-radius: 10px; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; }
+        h1 { font-size: 1.5em; margin-bottom: 20px; }
+        button { padding: 15px 30px; font-size: 1.2em; background-color: #007BFF; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        #errorMessage { display: none; color: #f87171; margin-top: 20px; max-width: 80%; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
+
 <body>
     <div id="overlay">
-        <div class="content">
-            <h1>Reto Dalgona</h1>
-            <p>Elige una forma para empezar.</p>
-            <div id="shape-selector">
-                <button onclick="startApp('triangle')">Triángulo</button>
-                <button onclick="startApp('star')">Estrella</button>
-                <button onclick="startApp('umbrella')">Paraguas</button>
-            </div>
-            <p id="errorMessage"></p>
-        </div>
+        <h1>Mueve el Objeto Virtual</h1>
+        <p>Usa tu índice y pulgar para "agarrar" y mover el círculo rojo.</p>
+        <button id="startButton">Iniciar Detección</button>
+        <p id="errorMessage"></p>
     </div>
 
-    <div class="container">
-        <video class="input_video"></video>
-        <canvas class="output_canvas" width="1280px" height="720px"></canvas>
-        <canvas id="game-canvas"></canvas>
-        <div id="loading"><p>Cargando modelos de IA...</p></div>
+    <div id="container">
+        <video id="webcam" style="display: none;" playsinline></video>
+        <canvas id="outputCanvas"></canvas>
+        <div id="loading">Cargando modelos de IA...</div>
     </div>
-    <div id="timer">60</div>
 
-  <script>
-    const videoElement = document.getElementsByClassName('input_video')[0];
-    const canvasElement = document.getElementsByClassName('output_canvas')[0];
-    const canvasCtx = canvasElement.getContext('2d');
-    const loadingElement = document.querySelector('.loading');
-    const overlay = document.getElementById('overlay');
-    const errorElement = document.getElementById('errorMessage');
-    const gameCanvas = document.getElementById('game-canvas');
-    const gameCtx = gameCanvas.getContext('2d');
-    const timerElement = document.getElementById('timer');
-    
-    let hands, camera;
-    let gameActive = false, timerInterval, timeLeft = 60, isTracing = false;
-    let currentShape = null;
+    <script>
+        const startButton = document.getElementById('startButton');
+        const overlay = document.getElementById('overlay');
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('outputCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingElement = document.getElementById('loading');
+        const errorElement = document.getElementById('errorMessage');
 
-    function onResults(results) {
-        if (loadingElement.style.display !== 'none') {
-            loadingElement.style.display = 'none';
-            timerElement.style.display = 'block';
-        }
+        let hands;
+        let animationFrameId;
 
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-      
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            const landmarks = results.multiHandLandmarks[0];
-            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0, 255, 0, 0.5)', lineWidth: 3 });
-            drawLandmarks(canvasCtx, landmarks, { color: '#FFA500', lineWidth: 1, radius: 3 });
-            
-            const indexFingerTip = landmarks[8];
-            const fingerX = indexFingerTip.x * canvasElement.width;
-            const fingerY = indexFingerTip.y * canvasElement.height;
+        // **NUEVO: Definición del objeto virtual y su estado**
+        const draggableCircle = {
+            x: 300, // Posición inicial en X
+            y: 300, // Posición inicial en Y
+            radius: 30,
+            color: 'red'
+        };
+        let isGrabbing = false; // Estado para saber si el objeto está siendo agarrado
 
-            checkCut(fingerX, fingerY);
-        } else {
-            isTracing = false;
-        }
-        canvasCtx.restore();
-    }
-
-    async function startApp(shape) {
-        currentShape = shape;
-        overlay.style.display = 'none';
-        loadingElement.style.display = 'block';
-        
-        hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`});
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-        hands.onResults(onResults);
-        
-        camera = new Camera(videoElement, {
-            onFrame: async () => {
-                if (gameActive) await hands.send({image: videoElement});
-            },
-            width: 1280,
-            height: 720
-        });
-        
-        try {
-            await camera.start();
-            setupGame();
-        } catch (err) {
-            loadingElement.style.display = 'none';
-            overlay.style.display = 'flex';
-            errorElement.textContent = `Error al iniciar la cámara: ${err.message}. Asegúrate de dar permiso.`;
-        }
-    }
-
-    function setupGame() {
-        const gameContainerSize = Math.min(window.innerWidth, window.innerHeight) * 0.9;
-        gameCanvas.width = gameContainerSize;
-        gameCanvas.height = gameContainerSize;
-        gameCanvas.style.width = `${gameContainerSize}px`;
-        gameCanvas.style.height = `${gameContainerSize}px`;
-
-        drawShape(gameCtx, currentShape, gameContainerSize);
-        
-        timeLeft = 60;
-        timerElement.textContent = timeLeft;
-        gameActive = true;
-        isTracing = false;
-        timerInterval = setInterval(updateTimer, 1000);
-    }
-
-    function checkCut(x, y) {
-        if (!gameActive) return;
-
-        // Convertir coordenadas de pantalla completa a coordenadas del canvas del juego
-        const canvasRect = gameCanvas.getBoundingClientRect();
-        const canvasX = x - canvasRect.left;
-        const canvasY = y - canvasRect.top;
-
-        if (canvasX < 0 || canvasX > canvasRect.width || canvasY < 0 || canvasY > canvasRect.height) {
-            isTracing = false;
-            return;
-        }
-
-        const pixelData = gameCtx.getImageData(canvasX, canvasY, 1, 1).data;
-        const isOnPath = pixelData[3] > 0;
-
-        if (!isOnPath && isTracing) {
-            endGame(false);
-        } else if (isOnPath) {
-             if (!isTracing) {
-                isTracing = true;
-            }
-        }
-    }
-
-    function updateTimer() {
-        if (!gameActive) return;
-        timeLeft--;
-        timerElement.textContent = timeLeft;
-        if (timeLeft <= 0) {
-            endGame(true); 
-        }
-    }
-
-    function endGame(isWin) {
-        if (!gameActive) return;
-        
-        gameActive = false;
-        clearInterval(timerInterval);
-
-        const contentDiv = overlay.querySelector('.content');
-        const h1 = contentDiv.querySelector('h1');
-        const p = contentDiv.querySelector('p');
-
-        if (isWin) {
-            h1.textContent = "¡Felicidades!";
-            p.textContent = "Has cortado la galleta a la perfección.";
-        } else {
-            drawCrack();
-            h1.textContent = "¡Has Perdido!";
-            p.textContent = "La galleta se ha roto.";
-        }
-        
-        overlay.querySelector('#shape-selector').innerHTML = '<button onclick="window.location.reload()">Jugar de Nuevo</button>';
-        overlay.style.display = 'flex';
-    }
-    
-    function drawShape(ctx, shape, size) {
-        const center = size / 2;
-        ctx.clearRect(0, 0, size, size);
-        ctx.fillStyle = 'rgba(240, 194, 123, 0.75)';
-        ctx.beginPath();
-        ctx.arc(center, center, size * 0.45, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(191, 123, 40, 0.9)';
-        ctx.lineWidth = size * 0.02;
-        ctx.beginPath();
-
-        switch (shape) {
-            case 'triangle':
-                const triRadius = size * 0.25;
-                ctx.moveTo(center, center - triRadius);
-                ctx.lineTo(center + triRadius * Math.cos(Math.PI / 6), center + triRadius * Math.sin(Math.PI / 6));
-                ctx.lineTo(center - triRadius * Math.cos(Math.PI / 6), center + triRadius * Math.sin(Math.PI / 6));
-                ctx.closePath();
-                break;
-            case 'star':
-                const spikes = 5, outerRadius = size * 0.25, innerRadius = size * 0.1;
-                let rot = Math.PI / 2 * 3;
-                let x = center, y = center;
-                let step = Math.PI / spikes;
-                ctx.moveTo(center, center - outerRadius);
-                for (let i = 0; i < spikes; i++) {
-                    x = center + Math.cos(rot) * outerRadius;
-                    y = center + Math.sin(rot) * outerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
-                    x = center + Math.cos(rot) * innerRadius;
-                    y = center + Math.sin(rot) * innerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
-                }
-                ctx.closePath();
-                break;
-            case 'umbrella':
-                const umbRadius = size * 0.2;
-                ctx.arc(center, center, umbRadius, Math.PI, 0);
-                ctx.moveTo(center, center);
-                ctx.lineTo(center, center + umbRadius * 1.5);
-                ctx.moveTo(center, center + umbRadius * 1.5);
-                ctx.arc(center - umbRadius * 0.2, center + umbRadius * 1.5, umbRadius * 0.2, 0, Math.PI / 2);
-                break;
-        }
-        ctx.stroke();
-    }
-        
-    function drawCrack() {
-        const ctx = gameCanvas.getContext('2d');
-        const size = gameCanvas.width;
-        ctx.clearRect(0,0,size,size);
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.lineWidth = 3;
-        for(let i = 0; i < 7; i++){
+        // **NUEVO: Función para dibujar nuestro objeto virtual**
+        function drawCircle(ctx, circle) {
             ctx.beginPath();
-            ctx.moveTo(size/2, size/2);
-            ctx.lineTo(Math.random() * size, Math.random() * size);
+            ctx.arc(circle.x, circle.y, circle.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = circle.color;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
             ctx.stroke();
         }
-    }
+        
+        // **NUEVO: Función para detectar el gesto de "pinza"**
+        // Comprueba si la distancia entre el pulgar y el índice es pequeña
+        function isPinched(landmarks) {
+            const thumbTip = landmarks[4];  // Punta del pulgar
+            const indexTip = landmarks[8];  // Punta del índice
+            const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            return distance < 0.05; // Umbral de distancia, puedes ajustarlo
+        }
 
-  </script>
+
+        function onResults(results) {
+            if (loadingElement.style.display !== 'none') {
+                loadingElement.style.display = 'none';
+            }
+
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+            
+            // **Lógica de Interacción Principal**
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                // Usamos solo la primera mano detectada para la interacción
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Convertir coordenadas normalizadas a píxeles del canvas
+                const indexTipX = landmarks[8].x * canvasElement.width;
+                const indexTipY = landmarks[8].y * canvasElement.height;
+
+                // Dibujar los puntos y conexiones de la mano
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+                
+                const pinched = isPinched(landmarks);
+                
+                // Calcular la distancia entre la punta del dedo y el centro del círculo
+                const distFromCircle = Math.hypot(indexTipX - draggableCircle.x, indexTipY - draggableCircle.y);
+
+                // **AGARRAR**: Si no estamos agarrando, hacemos la pinza y estamos cerca del círculo
+                if (!isGrabbing && pinched && distFromCircle < draggableCircle.radius * 2) {
+                   isGrabbing = true;
+                }
+                
+                // **SOLTAR**: Si estamos agarrando y dejamos de hacer la pinza
+                if (isGrabbing && !pinched) {
+                    isGrabbing = false;
+                }
+                
+                // **MOVER**: Si estamos en estado de "agarrando", actualizamos la posición del círculo
+                if (isGrabbing) {
+                    draggableCircle.x = indexTipX;
+                    draggableCircle.y = indexTipY;
+                }
+                
+            } else {
+                // Si no se detectan manos, nos aseguramos de soltar el objeto
+                isGrabbing = false;
+            }
+            
+            // **Dibujar el círculo virtual en cada fotograma**
+            drawCircle(canvasCtx, draggableCircle);
+
+            canvasCtx.restore();
+        }
+
+        async function startApp() {
+            overlay.style.display = 'none';
+            loadingElement.style.display = 'block';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720 }
+                });
+                videoElement.srcObject = stream;
+                videoElement.play();
+
+                videoElement.onloadedmetadata = () => {
+                    hands = new Hands({locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    }});
+                    
+                    hands.setOptions({
+                        maxNumHands: 1, // Cambiado a 1 para simplificar la interacción
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+                    
+                    hands.onResults(onResults);
+                    sendToHands();
+                };
+
+            } catch (err) {
+                loadingElement.style.display = 'none';
+                overlay.style.display = 'flex';
+                errorElement.style.display = 'block';
+                errorElement.textContent = `Error al iniciar la cámara: ${err.message}. Asegúrate de haber dado permiso.`;
+                console.error(err);
+            }
+        }
+        
+        async function sendToHands() {
+            if (!videoElement.paused && !videoElement.ended) {
+                await hands.send({ image: videoElement });
+            }
+            animationFrameId = requestAnimationFrame(sendToHands);
+        }
+
+        startButton.addEventListener('click', startApp);
+    </script>
 </body>
 </html>
-
-
