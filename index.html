@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual con Manos v2.1</title>
+    <title>Pizarra Virtual con Manos v2.2</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -73,8 +73,8 @@
             const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
             
             // ### CAMBIO REALIZADO AQUÍ ###
-            // Se redujo el valor de 0.06 a 0.025 para una detección mucho más precisa.
-            return distance < 0.025; 
+            // Se aumentó el valor a 0.04 para un punto intermedio de sensibilidad.
+            return distance < 0.04; 
         }
 
         function isOpenPalm(landmarks) {
