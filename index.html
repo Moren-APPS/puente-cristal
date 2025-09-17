@@ -2,10 +2,9 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual v4.0 Final</title>
+    <title>Pizarra Virtual v4.1 Corregida</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-        /* CSS sin cambios */
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleX(-1); max-width: 100%; max-height: 100%; border-radius: 10px; }
@@ -42,6 +41,7 @@
     <script>
         // --- Referencias a elementos HTML ---
         const startButton = document.getElementById('startButton');
+        const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
         const outputCanvas = document.getElementById('outputCanvas');
         const outputCtx = outputCanvas.getContext('2d');
@@ -64,10 +64,10 @@
         const colors = ['#FF1744', '#00E676', '#2979FF', '#FFFF00', '#FFFFFF', '#000000'];
         let isPaletteOpen = false;
         let colorSwatches = [];
-
-        // --- NUEVO: Variables de estado para el selector de grosor ---
+        
         const thicknessIcon = { x: 30, y: 110, width: 60, height: 60 };
-        const thicknessOptions = [4, 10, 20]; // Delgado, Mediano, Grueso
+        const thicknessOptions = [4, 10, 20];
+        let currentLineWidth = 10; // Grosor inicial
         let isThicknessMenuOpen = false;
         let thicknessSwatches = [];
 
@@ -77,9 +77,7 @@
                    point.y > rect.y && point.y < rect.y + rect.height;
         }
 
-        // --- Función para dibujar toda la Interfaz de Usuario ---
         function drawUI(ctx, point) {
-            // Dibuja el ícono de la paleta
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height);
             ctx.font = '40px sans-serif';
@@ -87,7 +85,6 @@
             ctx.textBaseline = 'middle';
             ctx.fillText(paletteIcon.emoji, paletteIcon.x + paletteIcon.width / 2, paletteIcon.y + paletteIcon.height / 2);
 
-            // --- NUEVO: Dibuja el ícono de grosor ---
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.fillRect(thicknessIcon.x, thicknessIcon.y, thicknessIcon.width, thicknessIcon.height);
             ctx.fillStyle = 'white';
@@ -95,36 +92,32 @@
             ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 28, 30, 6);
             ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 45, 30, 9);
 
-
-            // Dibuja los colores si la paleta está abierta
             if (isPaletteOpen) {
-                // ... (lógica de dibujar colores sin cambios)
+                colorSwatches = [];
+                colors.forEach((color, index) => {
+                    const swatch = { x: paletteIcon.x + (index + 1) * (paletteIcon.width + 10), y: paletteIcon.y, width: paletteIcon.width, height: paletteIcon.height, color: color };
+                    colorSwatches.push(swatch);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height);
+                    if (isPointInsideRect(point, swatch)) {
+                        ctx.strokeStyle = 'cyan';
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height);
+                    }
+                });
             }
 
-            // --- NUEVO: Dibuja las opciones de grosor si el menú está abierto ---
             if (isThicknessMenuOpen) {
-                thicknessSwatches = []; // Reinicia
+                thicknessSwatches = [];
                 thicknessOptions.forEach((size, index) => {
-                    const swatch = {
-                        x: thicknessIcon.x + (index + 1) * (thicknessIcon.width + 10),
-                        y: thicknessIcon.y,
-                        width: thicknessIcon.width,
-                        height: thicknessIcon.height,
-                        size: size
-                    };
+                    const swatch = { x: thicknessIcon.x + (index + 1) * (thicknessIcon.width + 10), y: thicknessIcon.y, width: thicknessIcon.width, height: thicknessIcon.height, size: size };
                     thicknessSwatches.push(swatch);
-                    
-                    // Dibuja el contenedor
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
                     ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height);
-                    
-                    // Dibuja el círculo representando el grosor
                     ctx.fillStyle = 'white';
                     ctx.beginPath();
                     ctx.arc(swatch.x + swatch.width / 2, swatch.y + swatch.height / 2, swatch.size, 0, 2 * Math.PI);
                     ctx.fill();
-
-                    // Resalta si el dedo está encima
                     if (isPointInsideRect(point, swatch)) {
                         ctx.strokeStyle = 'cyan';
                         ctx.lineWidth = 4;
@@ -135,8 +128,6 @@
         }
         
         function onResults(results) {
-            if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none';
-
             outputCtx.save();
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
 
@@ -144,20 +135,22 @@
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-                
                 drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
                 drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
                 
                 const indexTip = landmarks[8];
                 const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
 
-                if (isFirstFrame) { /* ... inicialización punto suavizado ... */ }
+                if (isFirstFrame) {
+                    smoothedPoint.x = currentPoint.x;
+                    smoothedPoint.y = currentPoint.y;
+                    isFirstFrame = false;
+                }
                 smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
                 smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
 
                 if (touchCooldown > 0) touchCooldown--;
 
-                // --- NUEVO: Lógica de interacción con UI extendida ---
                 if (isPaletteOpen) {
                     for (const swatch of colorSwatches) {
                         if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
@@ -171,7 +164,8 @@
                 } else if (isThicknessMenuOpen) {
                     for (const swatch of thicknessSwatches) {
                         if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
-                            drawingCtx.lineWidth = swatch.size; // Cambia el grosor
+                            currentLineWidth = swatch.size;
+                            drawingCtx.lineWidth = currentLineWidth;
                             isThicknessMenuOpen = false;
                             touchCooldown = 20;
                             fingerOnUI = true;
@@ -180,29 +174,40 @@
                     }
                 }
 
-                // Chequeo para abrir los menús (solo si no se interactuó ya)
                 if (!fingerOnUI && touchCooldown === 0) {
                     if (isPointInsideRect(smoothedPoint, paletteIcon)) {
                         isPaletteOpen = !isPaletteOpen;
-                        isThicknessMenuOpen = false; // Cierra el otro menú
+                        isThicknessMenuOpen = false;
                         touchCooldown = 20;
                         fingerOnUI = true;
                     } else if (isPointInsideRect(smoothedPoint, thicknessIcon)) {
                         isThicknessMenuOpen = !isThicknessMenuOpen;
-                        isPaletteOpen = false; // Cierra el otro menú
+                        isPaletteOpen = false;
                         touchCooldown = 20;
                         fingerOnUI = true;
                     }
                 }
                 
-                drawUI(outputCtx, smoothedPoint); // Dibuja la UI
+                drawUI(outputCtx, smoothedPoint);
 
-                // Lógica de dibujar/borrar
-                const pinched = isPinched(landmarks);
-                const openPalm = isOpenPalm(landmarks);
-                
                 if (!fingerOnUI) {
-                    // ... (lógica de dibujar/borrar sin cambios)
+                    const pinched = isPinched(landmarks);
+                    const openPalm = isOpenPalm(landmarks);
+                    if (openPalm) {
+                        isDrawing = false;
+                        drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize);
+                    } else if (pinched) {
+                        if (!isDrawing) {
+                            isDrawing = true;
+                            drawingCtx.beginPath();
+                            drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y);
+                        } else {
+                            drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y);
+                            drawingCtx.stroke();
+                        }
+                    } else {
+                        isDrawing = false;
+                    }
                 }
             } else {
                 isDrawing = false;
@@ -211,17 +216,62 @@
             outputCtx.restore();
         }
 
-        // --- El resto del JS (sin cambios significativos) ---
-        // (Incluyo las funciones completas para que sea copiar y pegar)
+        async function startCamera(facingMode) {
+            loadingElement.style.display = 'block';
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+            }
+            const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: facingMode } } };
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                activeStream = stream;
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    loadingElement.style.display = 'none';
+                    switchCameraButton.style.display = 'block';
+                    const videoWidth = videoElement.videoWidth;
+                    const videoHeight = videoElement.videoHeight;
+                    [outputCanvas.width, drawingCanvas.width] = [videoWidth, videoWidth];
+                    [outputCanvas.height, drawingCanvas.height] = [videoHeight, videoHeight];
+                    
+                    drawingCtx.strokeStyle = '#00FFFF';
+                    drawingCtx.lineWidth = currentLineWidth;
+                    drawingCtx.lineCap = 'round';
+                    drawingCtx.lineJoin = 'round';
+
+                    if (!handsInitialized) {
+                        hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+                        hands.onResults(onResults);
+                        sendToHands();
+                        handsInitialized = true;
+                    }
+                };
+            } catch (err) {
+                loadingElement.style.display = 'none';
+                console.error("Error al iniciar/cambiar de cámara:", err);
+            }
+        }
+
+        async function sendToHands() {
+            if (videoElement.readyState >= 3) {
+                await hands.send({ image: videoElement });
+            }
+            requestAnimationFrame(sendToHands);
+        }
+
         function isPinched(landmarks) { const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; }
         function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
-        if (isPaletteOpen) { colorSwatches = []; colors.forEach((color, index) => { const swatch = { x: paletteIcon.x + (index + 1) * (paletteIcon.width + 10), y: paletteIcon.y, width: paletteIcon.width, height: paletteIcon.height, color: color }; colorSwatches.push(swatch); ctx.fillStyle = color; ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height); if (isPointInsideRect(point, swatch)) { ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4; ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height); } }); } // Snippet para completar drawUI
-        if (!fingerOnUI) { const pinched = isPinched(landmarks); const openPalm = isOpenPalm(landmarks); if (openPalm) { isDrawing = false; drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize); } else if (pinched) { if (!isDrawing) { isDrawing = true; drawingCtx.beginPath(); drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y); } else { drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y); drawingCtx.stroke(); } } else { isDrawing = false; } } // Snippet para completar onResults
-        if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } // Snippet para completar onResults
-        async function startCamera(facingMode) { loadingElement.style.display = 'block'; if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); } const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: facingMode } } }; try { const stream = await navigator.mediaDevices.getUserMedia(constraints); activeStream = stream; videoElement.srcObject = stream; videoElement.onloadedmetadata = () => { videoElement.play(); loadingElement.style.display = 'none'; switchCameraButton.style.display = 'block'; const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight; outputCanvas.width = videoWidth; outputCanvas.height = videoHeight; drawingCanvas.width = videoWidth; drawingCanvas.height = videoHeight; drawingCtx.strokeStyle = '#00FFFF'; drawingCtx.lineWidth = 10; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; if (!handsInitialized) { hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`}); hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 }); hands.onResults(onResults); sendToHands(); handsInitialized = true; } }; } catch (err) { loadingElement.style.display = 'none'; console.error("Error al cambiar de cámara:", err); } }
-        async function sendToHands() { if (videoElement.readyState >= 3) { await hands.send({ image: videoElement }); } requestAnimationFrame(sendToHands); }
-        startButton.addEventListener('click', () => { document.getElementById('overlay').style.display = 'none'; startCamera(currentFacingMode); });
-        switchCameraButton.addEventListener('click', () => { currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user'; startCamera(currentFacingMode); });
+
+        startButton.addEventListener('click', () => {
+            overlay.style.display = 'none';
+            startCamera(currentFacingMode);
+        });
+        switchCameraButton.addEventListener('click', () => {
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+            startCamera(currentFacingMode);
+        });
     </script>
 </body>
 </html>
