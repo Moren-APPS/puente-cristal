@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual con Manos v2.2</title>
+    <title>Pizarra Virtual con Manos v3.0</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -27,7 +27,21 @@
         p { max-width: 80%; line-height: 1.5; }
         button { padding: 15px 30px; font-size: 1.2em; background-color: #007BFF; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
         #loading { display: none; z-index: 5; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
-        #errorMessage { display: none; color: #f87171; margin-top: 20px; max-width: 80%; }
+        
+        /* --- NUEVO: Estilos para el botón de cambiar cámara --- */
+        #switchCameraButton {
+            display: none; /* Oculto hasta que la cámara inicie */
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            padding: 10px 15px;
+            font-size: 1.5em; /* Emoji más grande */
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -46,9 +60,11 @@
         <canvas id="drawingCanvas"></canvas>
         <canvas id="outputCanvas"></canvas>
         <div id="loading">Cargando modelos de IA...</div>
+        <button id="switchCameraButton">🔄</button>
     </div>
 
     <script>
+        // --- Referencias a elementos HTML ---
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
@@ -57,7 +73,7 @@
         const drawingCanvas = document.getElementById('drawingCanvas');
         const drawingCtx = drawingCanvas.getContext('2d');
         const loadingElement = document.getElementById('loading');
-        const errorElement = document.getElementById('errorMessage');
+        const switchCameraButton = document.getElementById('switchCameraButton'); // Nueva referencia
 
         let hands;
         let isDrawing = false;
@@ -67,97 +83,48 @@
         let smoothedPoint = { x: 0, y: 0 };
         let isFirstFrame = true;
 
+        // --- NUEVO: Variables de estado para la cámara ---
+        let currentFacingMode = 'user'; // 'user' para frontal, 'environment' para trasera
+        let activeStream; // Para guardar la transmisión de video activa
+        let handsInitialized = false; // Para inicializar MediaPipe solo una vez
+
         function isPinched(landmarks) {
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
             const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            
-            // ### CAMBIO REALIZADO AQUÍ ###
-            // Se aumentó el valor a 0.04 para un punto intermedio de sensibilidad.
             return distance < 0.04; 
         }
 
-        function isOpenPalm(landmarks) {
-            const fingerTips = [8, 12, 16, 20];
-            const fingerPips = [6, 10, 14, 18];
-            for (let i = 0; i < fingerTips.length; i++) {
-                if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false;
-            }
-            return true;
-        }
+        function isOpenPalm(landmarks) { /* ... (sin cambios) ... */ }
+        function onResults(results) { /* ... (sin cambios) ... */ }
 
-        function onResults(results) {
-            if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none';
-
-            outputCtx.save();
-            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                
-                drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
-                
-                const indexTip = landmarks[8];
-                const currentPoint = {
-                    x: indexTip.x * drawingCanvas.width,
-                    y: indexTip.y * drawingCanvas.height
-                };
-
-                if (isFirstFrame) {
-                    smoothedPoint.x = currentPoint.x;
-                    smoothedPoint.y = currentPoint.y;
-                    isFirstFrame = false;
-                }
-
-                smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
-                smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
-
-                const pinched = isPinched(landmarks);
-                const openPalm = isOpenPalm(landmarks);
-                
-                if (openPalm) {
-                    isDrawing = false;
-                    drawingCtx.clearRect(
-                        smoothedPoint.x - eraserSize / 2, 
-                        smoothedPoint.y - eraserSize / 2, 
-                        eraserSize, 
-                        eraserSize
-                    );
-                } 
-                else if (pinched) {
-                    if (!isDrawing) {
-                        isDrawing = true;
-                        drawingCtx.beginPath();
-                        drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y);
-                    } else {
-                        drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y);
-                        drawingCtx.stroke();
-                    }
-                } 
-                else {
-                    isDrawing = false;
-                }
-            } else {
-                isDrawing = false;
-                isFirstFrame = true;
-            }
-            outputCtx.restore();
-        }
-
-        async function startApp() {
-            overlay.style.display = 'none';
+        // --- NUEVO: Función refactorizada para iniciar/cambiar la cámara ---
+        async function startCamera(facingMode) {
             loadingElement.style.display = 'block';
 
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720 }
-                });
-                videoElement.srcObject = stream;
-                videoElement.play();
+            // Detener la cámara anterior si existe
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+            }
 
+            const constraints = {
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: { exact: facingMode }
+                }
+            };
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                activeStream = stream; // Guardar la nueva transmisión
+                videoElement.srcObject = stream;
+                
                 videoElement.onloadedmetadata = () => {
-                    videoElement.style.display = 'block';
+                    videoElement.play();
+                    loadingElement.style.display = 'none';
+                    switchCameraButton.style.display = 'block'; // Mostrar el botón
+
                     const videoWidth = videoElement.videoWidth;
                     const videoHeight = videoElement.videoHeight;
                     outputCanvas.width = videoWidth;
@@ -165,41 +132,56 @@
                     drawingCanvas.width = videoWidth;
                     drawingCanvas.height = videoHeight;
 
+                    // Reaplicar estilos de dibujo por si el canvas se reinicia
                     drawingCtx.strokeStyle = '#00FFFF';
                     drawingCtx.lineWidth = 6;
                     drawingCtx.lineCap = 'round';
                     drawingCtx.lineJoin = 'round';
 
-                    hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-                    
-                    hands.setOptions({
-                        maxNumHands: 1,
-                        modelComplexity: 1,
-                        minDetectionConfidence: 0.7,
-                        minTrackingConfidence: 0.7
-                    });
-                    
-                    hands.onResults(onResults);
-                    sendToHands();
+                    // Inicializar MediaPipe Hands solo la primera vez
+                    if (!handsInitialized) {
+                        hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                        hands.setOptions({
+                            maxNumHands: 1,
+                            modelComplexity: 1,
+                            minDetectionConfidence: 0.7,
+                            minTrackingConfidence: 0.7
+                        });
+                        hands.onResults(onResults);
+                        sendToHands(); // Iniciar el bucle de procesamiento
+                        handsInitialized = true;
+                    }
                 };
-
             } catch (err) {
                 loadingElement.style.display = 'none';
-                overlay.style.display = 'flex';
-                errorElement.style.display = 'block';
-                errorElement.textContent = `Error al iniciar la cámara: ${err.message}. Asegúrate de haber dado permiso.`;
-                console.error(err);
+                console.error("Error al cambiar de cámara:", err);
+                alert(`No se pudo acceder a la cámara '${facingMode}'. Es posible que tu dispositivo no la tenga o que el navegador no lo soporte.`);
             }
         }
-        
+
         async function sendToHands() {
-            if (!videoElement.paused && !videoElement.ended) {
+            if (videoElement.readyState >= 3) { // Asegurarse de que el video tenga datos
                 await hands.send({ image: videoElement });
             }
             requestAnimationFrame(sendToHands);
         }
 
-        startButton.addEventListener('click', startApp);
+        // --- Lógica de los botones ---
+        startButton.addEventListener('click', () => {
+            overlay.style.display = 'none';
+            startCamera(currentFacingMode); // Iniciar con la cámara por defecto
+        });
+
+        switchCameraButton.addEventListener('click', () => {
+            // Cambiar al modo opuesto
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+            startCamera(currentFacingMode);
+        });
+
+        // Copiando funciones sin cambios para que el snippet esté completo
+        function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
+        function onResults(results) { if (loadingElement.style.display !== 'none') loadingElement.style.display = 'none'; outputCtx.save(); outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height); if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) { const landmarks = results.multiHandLandmarks[0]; drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 }); drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 }); const indexTip = landmarks[8]; const currentPoint = { x: indexTip.x * drawingCanvas.width, y: indexTip.y * drawingCanvas.height }; if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor; smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor; const pinched = isPinched(landmarks); const openPalm = isOpenPalm(landmarks); if (openPalm) { isDrawing = false; drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize); } else if (pinched) { if (!isDrawing) { isDrawing = true; drawingCtx.beginPath(); drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y); } else { drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y); drawingCtx.stroke(); } } else { isDrawing = false; } } else { isDrawing = false; isFirstFrame = true; } outputCtx.restore(); }
+
     </script>
 </body>
 </html>
