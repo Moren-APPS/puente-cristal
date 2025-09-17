@@ -7,7 +7,6 @@
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        /* Ambos canvas se superponen perfectamente */
         canvas { 
             position: absolute; 
             top: 50%; 
@@ -24,7 +23,7 @@
         #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
         #errorMessage { display: none; color: #f87171; margin-top: 20px; max-width: 80%; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@medipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 
@@ -47,103 +46,80 @@
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
-
-        // Referencias a los dos canvas
         const outputCanvas = document.getElementById('outputCanvas');
         const outputCtx = outputCanvas.getContext('2d');
         const drawingCanvas = document.getElementById('drawingCanvas');
         const drawingCtx = drawingCanvas.getContext('2d');
-
         const loadingElement = document.getElementById('loading');
         const errorElement = document.getElementById('errorMessage');
 
         let hands;
         let animationFrameId;
-
-        // NUEVO: Variables de estado para el dibujo
         let isDrawing = false;
-        let lastX, lastY;
-
-        // --- LÓGICA DE DETECCIÓN DE GESTOS ---
-
-        // Gesto de Pinza (Lápiz)
+        
         function isPinched(landmarks) {
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
             const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            return distance < 0.06; // Umbral ajustado para mayor comodidad
+            return distance < 0.06;
         }
 
-        // NUEVO: Gesto de Palma Abierta (Borrador)
         function isOpenPalm(landmarks) {
-            // Un método simple es comprobar si las puntas de los dedos están más "arriba" (menor valor en Y) que sus nudillos inferiores.
-            const fingerTips = [8, 12, 16, 20]; // Puntas de los dedos índice, medio, anular y meñique
-            const fingerPips = [6, 10, 14, 18]; // Nudillos intermedios (PIP)
-            
+            const fingerTips = [8, 12, 16, 20];
+            const fingerPips = [6, 10, 14, 18];
             for (let i = 0; i < fingerTips.length; i++) {
                 if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) {
-                    return false; // Si alguna punta de dedo está por debajo de su nudillo, no es una palma abierta
+                    return false;
                 }
             }
             return true;
         }
-
-        // --- FUNCIÓN PRINCIPAL DE PROCESAMIENTO ---
 
         function onResults(results) {
             if (loadingElement.style.display !== 'none') {
                 loadingElement.style.display = 'none';
             }
 
-            // Dibuja el video y los landmarks en el canvas frontal (outputCanvas)
             outputCtx.save();
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
             outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-
-                // Dibuja los conectores y puntos de la mano
+                
+                // Estas funciones ahora sí existen porque la librería cargó correctamente
                 drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
                 drawLandmarks(outputCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
 
                 const pinched = isPinched(landmarks);
                 const openPalm = isOpenPalm(landmarks);
                 
-                // Lógica de Borrado: Si la palma está abierta, limpiar el canvas de dibujo
                 if (openPalm) {
                     drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                    isDrawing = false; // Detener cualquier dibujo activo
+                    isDrawing = false;
                 } 
-                // Lógica de Dibujo: Si se hace pinza
                 else if (pinched) {
                     const indexTip = landmarks[8];
                     const currentX = indexTip.x * drawingCanvas.width;
                     const currentY = indexTip.y * drawingCanvas.height;
 
                     if (!isDrawing) {
-                        // Empezar a dibujar: levanta el lápiz y muévelo a la nueva posición
                         isDrawing = true;
                         drawingCtx.beginPath();
                         drawingCtx.moveTo(currentX, currentY);
                     } else {
-                        // Continuar dibujando: traza una línea hasta la nueva posición
                         drawingCtx.lineTo(currentX, currentY);
                         drawingCtx.stroke();
                     }
                 } 
-                // Si no hay gesto, levantar el lápiz
                 else {
                     isDrawing = false;
                 }
             } else {
-                // Si no se detectan manos, asegurarse de que no se esté dibujando
                 isDrawing = false;
             }
             outputCtx.restore();
         }
-
-        // --- CONFIGURACIÓN E INICIO DE LA APLICACIÓN ---
 
         async function startApp() {
             overlay.style.display = 'none';
@@ -157,7 +133,6 @@
                 videoElement.play();
 
                 videoElement.onloadedmetadata = () => {
-                    // Sincronizar el tamaño de ambos canvas con el video
                     const videoWidth = videoElement.videoWidth;
                     const videoHeight = videoElement.videoHeight;
                     outputCanvas.width = videoWidth;
@@ -165,7 +140,6 @@
                     drawingCanvas.width = videoWidth;
                     drawingCanvas.height = videoHeight;
 
-                    // NUEVO: Configurar el estilo del lápiz en el canvas de dibujo
                     drawingCtx.strokeStyle = 'cyan';
                     drawingCtx.lineWidth = 5;
                     drawingCtx.lineCap = 'round';
@@ -178,7 +152,7 @@
                     hands.setOptions({
                         maxNumHands: 1,
                         modelComplexity: 1,
-                        minDetectionConfidence: 0.7, // Aumentado para mayor estabilidad del gesto
+                        minDetectionConfidence: 0.7,
                         minTrackingConfidence: 0.7
                     });
                     
