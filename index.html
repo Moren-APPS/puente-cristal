@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual con Manos v2</title>
+    <title>Pizarra Virtual con Manos v2.1</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -49,7 +49,6 @@
     </div>
 
     <script>
-        // ... (Referencias a elementos HTML sin cambios)
         const startButton = document.getElementById('startButton');
         const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam');
@@ -62,19 +61,20 @@
 
         let hands;
         let isDrawing = false;
-
-        // --- NUEVO: Parámetros de configuración para suavizado y borrador ---
-        const smoothingFactor = 0.4; // 0 = más lento y suave, 1 = más rápido y tembloroso
-        const eraserSize = 60;       // Tamaño en píxeles del borrador
-        let smoothedPoint = { x: 0, y: 0 }; // Almacenará la posición suavizada de la punta del dedo
-        let isFirstFrame = true; // Para inicializar la posición suavizada correctamente
-
+        
+        const smoothingFactor = 0.4;
+        const eraserSize = 60;
+        let smoothedPoint = { x: 0, y: 0 };
+        let isFirstFrame = true;
 
         function isPinched(landmarks) {
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
             const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            return distance < 0.06;
+            
+            // ### CAMBIO REALIZADO AQUÍ ###
+            // Se redujo el valor de 0.06 a 0.025 para una detección mucho más precisa.
+            return distance < 0.025; 
         }
 
         function isOpenPalm(landmarks) {
@@ -97,32 +97,27 @@
                 
                 drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
                 drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
-
-                // --- LÓGICA DE SUAVIZADO ---
-                const indexTip = landmarks[8]; // La punta del dedo índice
+                
+                const indexTip = landmarks[8];
                 const currentPoint = {
                     x: indexTip.x * drawingCanvas.width,
                     y: indexTip.y * drawingCanvas.height
                 };
 
-                // Si es el primer fotograma, inicializamos el punto suavizado en la posición actual
                 if (isFirstFrame) {
                     smoothedPoint.x = currentPoint.x;
                     smoothedPoint.y = currentPoint.y;
                     isFirstFrame = false;
                 }
 
-                // Aplicamos el filtro de suavizado (Promedio Móvil Exponencial)
                 smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
                 smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
 
-                // --- LÓGICA DE DIBUJO Y BORRADO (usando el punto suavizado) ---
                 const pinched = isPinched(landmarks);
                 const openPalm = isOpenPalm(landmarks);
                 
                 if (openPalm) {
-                    isDrawing = false; // Nos aseguramos de no estar dibujando
-                    // NUEVO: Lógica del borrador localizado
+                    isDrawing = false;
                     drawingCtx.clearRect(
                         smoothedPoint.x - eraserSize / 2, 
                         smoothedPoint.y - eraserSize / 2, 
@@ -141,17 +136,16 @@
                     }
                 } 
                 else {
-                    isDrawing = false; // Levantar el lápiz
+                    isDrawing = false;
                 }
             } else {
-                isDrawing = false; // Si no hay manos, no dibujar
-                isFirstFrame = true; // Reiniciar para la próxima vez que aparezca una mano
+                isDrawing = false;
+                isFirstFrame = true;
             }
             outputCtx.restore();
         }
 
         async function startApp() {
-            // ... (Función startApp sin cambios)
             overlay.style.display = 'none';
             loadingElement.style.display = 'block';
 
@@ -190,7 +184,6 @@
                 };
 
             } catch (err) {
-                // ... (Manejo de errores sin cambios)
                 loadingElement.style.display = 'none';
                 overlay.style.display = 'flex';
                 errorElement.style.display = 'block';
