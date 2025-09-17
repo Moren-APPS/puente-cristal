@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual v5.1 (Final y Corregida)</title>
+    <title>Pizarra Virtual v5.2 (UI Mejorada)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -26,7 +26,7 @@
 <body>
     <div id="overlay">
         <h1>Pizarra Virtual Final</h1>
-        <p>Toca 🎨 para el color, el icono de líneas para el grosor o 🗑️ para borrar todo. <br>Junta tus dedos para dibujar y abre la palma para borrar una parte.</p>
+        <p>Toca 🗑️ para borrar todo, 🎨 para el color o el icono de líneas para el grosor. <br>Junta tus dedos para dibujar y abre la palma para borrar una parte.</p>
         <button id="startButton">Iniciar Pizarra</button>
     </div>
 
@@ -59,20 +59,20 @@
         let currentFacingMode = 'user';
         let touchCooldown = 0;
 
-        // --- Variables de estado para la UI ---
-        const paletteIcon = { x: 30, y: 30, width: 60, height: 60, emoji: '🎨' };
+        // --- Variables de estado para la UI (CON BOTONES REORDENADOS) ---
+        const clearButton = { x: 30, y: 30, width: 60, height: 60, emoji: '🗑️' };
+        const paletteIcon = { x: 30, y: 110, width: 60, height: 60, emoji: '🎨' };
+        const thicknessIcon = { x: 30, y: 190, width: 60, height: 60 };
+        
         const colors = ['#FF1744', '#00E676', '#2979FF', '#FFFF00', '#FFFFFF', '#000000'];
         let isPaletteOpen = false;
         let colorSwatches = [];
         
-        const thicknessIcon = { x: 30, y: 110, width: 60, height: 60 };
         const thicknessOptions = [4, 10, 20];
         let currentLineWidth = 10;
         let isThicknessMenuOpen = false;
         let thicknessSwatches = [];
         
-        const clearButton = { x: 30, y: 190, width: 60, height: 60, emoji: '🗑️' };
-
         // --- Funciones de Utilidad ---
         function isPointInsideRect(point, rect) {
             return point.x > rect.x && point.x < rect.x + rect.width &&
@@ -81,13 +81,21 @@
 
         // --- Función para dibujar toda la Interfaz de Usuario ---
         function drawUI(ctx, point) {
+            // Dibuja el botón de borrar
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height);
+            ctx.fillRect(clearButton.x, clearButton.y, clearButton.width, clearButton.height);
             ctx.font = '40px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.fillText(clearButton.emoji, clearButton.x + clearButton.width / 2, clearButton.y + clearButton.height / 2);
+
+            // Dibuja ícono de paleta
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height);
+            ctx.font = '40px sans-serif';
             ctx.fillText(paletteIcon.emoji, paletteIcon.x + paletteIcon.width / 2, paletteIcon.y + paletteIcon.height / 2);
 
+            // Dibuja ícono de grosor
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.fillRect(thicknessIcon.x, thicknessIcon.y, thicknessIcon.width, thicknessIcon.height);
             ctx.fillStyle = 'white';
@@ -95,10 +103,6 @@
             ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 28, 30, 6);
             ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 45, 30, 9);
 
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fillRect(clearButton.x, clearButton.y, clearButton.width, clearButton.height);
-            ctx.font = '40px sans-serif';
-            ctx.fillText(clearButton.emoji, clearButton.x + clearButton.width / 2, clearButton.y + clearButton.height / 2);
 
             if (isPaletteOpen) {
                 colorSwatches = [];
@@ -138,17 +142,13 @@
         function onResults(results) {
             outputCtx.save();
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-
             let fingerOnUI = false;
-
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
                 drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
-                
                 const indexTip = landmarks[8];
                 const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
-
                 if (isFirstFrame) {
                     smoothedPoint.x = currentPoint.x;
                     smoothedPoint.y = currentPoint.y;
@@ -156,9 +156,7 @@
                 }
                 smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
                 smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
-
                 if (touchCooldown > 0) touchCooldown--;
-
                 if (isPaletteOpen) {
                     for (const swatch of colorSwatches) {
                         if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
@@ -181,9 +179,12 @@
                         }
                     }
                 }
-
                 if (!fingerOnUI && touchCooldown === 0) {
-                    if (isPointInsideRect(smoothedPoint, paletteIcon)) {
+                    if (isPointInsideRect(smoothedPoint, clearButton)) {
+                        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+                        touchCooldown = 20;
+                        fingerOnUI = true;
+                    } else if (isPointInsideRect(smoothedPoint, paletteIcon)) {
                         isPaletteOpen = !isPaletteOpen;
                         isThicknessMenuOpen = false;
                         touchCooldown = 20;
@@ -193,15 +194,9 @@
                         isPaletteOpen = false;
                         touchCooldown = 20;
                         fingerOnUI = true;
-                    } else if (isPointInsideRect(smoothedPoint, clearButton)) {
-                        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                        touchCooldown = 20;
-                        fingerOnUI = true;
                     }
                 }
-                
                 drawUI(outputCtx, smoothedPoint);
-
                 if (!fingerOnUI) {
                     const pinched = isPinched(landmarks);
                     const openPalm = isOpenPalm(landmarks);
