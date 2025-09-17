@@ -2,9 +2,10 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual v4.1 Corregida</title>
+    <title>Pizarra Virtual v4.2 (Con Rotación)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
+        /* CSS sin cambios */
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleX(-1); max-width: 100%; max-height: 100%; border-radius: 10px; }
@@ -50,7 +51,7 @@
         const switchCameraButton = document.getElementById('switchCameraButton');
         const loadingElement = document.getElementById('loading');
 
-        // --- Variables de estado de la aplicación ---
+        // --- Variables de estado ---
         let hands, activeStream;
         let isDrawing = false, isFirstFrame = true, handsInitialized = false;
         const smoothingFactor = 0.4;
@@ -58,164 +59,42 @@
         let smoothedPoint = { x: 0, y: 0 };
         let currentFacingMode = 'user';
         let touchCooldown = 0;
-
-        // --- Variables de estado para la UI ---
         const paletteIcon = { x: 30, y: 30, width: 60, height: 60, emoji: '🎨' };
         const colors = ['#FF1744', '#00E676', '#2979FF', '#FFFF00', '#FFFFFF', '#000000'];
         let isPaletteOpen = false;
         let colorSwatches = [];
-        
         const thicknessIcon = { x: 30, y: 110, width: 60, height: 60 };
         const thicknessOptions = [4, 10, 20];
-        let currentLineWidth = 10; // Grosor inicial
+        let currentLineWidth = 10;
         let isThicknessMenuOpen = false;
         let thicknessSwatches = [];
 
+        // --- NUEVO: Función para redimensionar los lienzos ---
+        function resizeCanvases() {
+            const videoWidth = videoElement.videoWidth;
+            const videoHeight = videoElement.videoHeight;
+            
+            // Si no hay video, no hagas nada
+            if (!videoWidth) return;
+
+            // Asignar nuevas dimensiones
+            outputCanvas.width = videoWidth;
+            outputCanvas.height = videoHeight;
+            drawingCanvas.width = videoWidth;
+            drawingCanvas.height = videoHeight;
+
+            // Re-aplicar estilos al contexto de dibujo, ya que se reinicia
+            drawingCtx.strokeStyle = drawingCtx.strokeStyle; // Mantiene el color seleccionado
+            drawingCtx.lineWidth = currentLineWidth;
+            drawingCtx.lineCap = 'round';
+            drawingCtx.lineJoin = 'round';
+        }
+
         // --- Funciones de Utilidad ---
-        function isPointInsideRect(point, rect) {
-            return point.x > rect.x && point.x < rect.x + rect.width &&
-                   point.y > rect.y && point.y < rect.y + rect.height;
-        }
-
-        function drawUI(ctx, point) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height);
-            ctx.font = '40px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(paletteIcon.emoji, paletteIcon.x + paletteIcon.width / 2, paletteIcon.y + paletteIcon.height / 2);
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fillRect(thicknessIcon.x, thicknessIcon.y, thicknessIcon.width, thicknessIcon.height);
-            ctx.fillStyle = 'white';
-            ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 15, 30, 3);
-            ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 28, 30, 6);
-            ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 45, 30, 9);
-
-            if (isPaletteOpen) {
-                colorSwatches = [];
-                colors.forEach((color, index) => {
-                    const swatch = { x: paletteIcon.x + (index + 1) * (paletteIcon.width + 10), y: paletteIcon.y, width: paletteIcon.width, height: paletteIcon.height, color: color };
-                    colorSwatches.push(swatch);
-                    ctx.fillStyle = color;
-                    ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height);
-                    if (isPointInsideRect(point, swatch)) {
-                        ctx.strokeStyle = 'cyan';
-                        ctx.lineWidth = 4;
-                        ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height);
-                    }
-                });
-            }
-
-            if (isThicknessMenuOpen) {
-                thicknessSwatches = [];
-                thicknessOptions.forEach((size, index) => {
-                    const swatch = { x: thicknessIcon.x + (index + 1) * (thicknessIcon.width + 10), y: thicknessIcon.y, width: thicknessIcon.width, height: thicknessIcon.height, size: size };
-                    thicknessSwatches.push(swatch);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height);
-                    ctx.fillStyle = 'white';
-                    ctx.beginPath();
-                    ctx.arc(swatch.x + swatch.width / 2, swatch.y + swatch.height / 2, swatch.size, 0, 2 * Math.PI);
-                    ctx.fill();
-                    if (isPointInsideRect(point, swatch)) {
-                        ctx.strokeStyle = 'cyan';
-                        ctx.lineWidth = 4;
-                        ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height);
-                    }
-                });
-            }
-        }
+        function isPointInsideRect(point, rect) { /* ... sin cambios ... */ }
+        function drawUI(ctx, point) { /* ... sin cambios ... */ }
+        function onResults(results) { /* ... sin cambios ... */ }
         
-        function onResults(results) {
-            outputCtx.save();
-            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-
-            let fingerOnUI = false;
-
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 });
-                
-                const indexTip = landmarks[8];
-                const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
-
-                if (isFirstFrame) {
-                    smoothedPoint.x = currentPoint.x;
-                    smoothedPoint.y = currentPoint.y;
-                    isFirstFrame = false;
-                }
-                smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor;
-                smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor;
-
-                if (touchCooldown > 0) touchCooldown--;
-
-                if (isPaletteOpen) {
-                    for (const swatch of colorSwatches) {
-                        if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
-                            drawingCtx.strokeStyle = swatch.color;
-                            isPaletteOpen = false;
-                            touchCooldown = 20;
-                            fingerOnUI = true;
-                            break;
-                        }
-                    }
-                } else if (isThicknessMenuOpen) {
-                    for (const swatch of thicknessSwatches) {
-                        if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) {
-                            currentLineWidth = swatch.size;
-                            drawingCtx.lineWidth = currentLineWidth;
-                            isThicknessMenuOpen = false;
-                            touchCooldown = 20;
-                            fingerOnUI = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!fingerOnUI && touchCooldown === 0) {
-                    if (isPointInsideRect(smoothedPoint, paletteIcon)) {
-                        isPaletteOpen = !isPaletteOpen;
-                        isThicknessMenuOpen = false;
-                        touchCooldown = 20;
-                        fingerOnUI = true;
-                    } else if (isPointInsideRect(smoothedPoint, thicknessIcon)) {
-                        isThicknessMenuOpen = !isThicknessMenuOpen;
-                        isPaletteOpen = false;
-                        touchCooldown = 20;
-                        fingerOnUI = true;
-                    }
-                }
-                
-                drawUI(outputCtx, smoothedPoint);
-
-                if (!fingerOnUI) {
-                    const pinched = isPinched(landmarks);
-                    const openPalm = isOpenPalm(landmarks);
-                    if (openPalm) {
-                        isDrawing = false;
-                        drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize);
-                    } else if (pinched) {
-                        if (!isDrawing) {
-                            isDrawing = true;
-                            drawingCtx.beginPath();
-                            drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y);
-                        } else {
-                            drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y);
-                            drawingCtx.stroke();
-                        }
-                    } else {
-                        isDrawing = false;
-                    }
-                }
-            } else {
-                isDrawing = false;
-                isFirstFrame = true;
-            }
-            outputCtx.restore();
-        }
-
         async function startCamera(facingMode) {
             loadingElement.style.display = 'block';
             if (activeStream) {
@@ -230,15 +109,9 @@
                     videoElement.play();
                     loadingElement.style.display = 'none';
                     switchCameraButton.style.display = 'block';
-                    const videoWidth = videoElement.videoWidth;
-                    const videoHeight = videoElement.videoHeight;
-                    [outputCanvas.width, drawingCanvas.width] = [videoWidth, videoWidth];
-                    [outputCanvas.height, drawingCanvas.height] = [videoHeight, videoHeight];
                     
-                    drawingCtx.strokeStyle = '#00FFFF';
-                    drawingCtx.lineWidth = currentLineWidth;
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.lineJoin = 'round';
+                    // --- CAMBIO: Usar la nueva función de redimensionado ---
+                    resizeCanvases(); 
 
                     if (!handsInitialized) {
                         hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
@@ -254,16 +127,11 @@
             }
         }
 
-        async function sendToHands() {
-            if (videoElement.readyState >= 3) {
-                await hands.send({ image: videoElement });
-            }
-            requestAnimationFrame(sendToHands);
-        }
+        async function sendToHands() { /* ... sin cambios ... */ }
+        function isPinched(landmarks) { /* ... sin cambios ... */ }
+        function isOpenPalm(landmarks) { /* ... sin cambios ... */ }
 
-        function isPinched(landmarks) { const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; }
-        function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
-
+        // --- Event Listeners ---
         startButton.addEventListener('click', () => {
             overlay.style.display = 'none';
             startCamera(currentFacingMode);
@@ -272,6 +140,17 @@
             currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
             startCamera(currentFacingMode);
         });
+
+        // --- NUEVO: Event Listener para detectar el cambio de tamaño/rotación ---
+        window.addEventListener('resize', resizeCanvases);
+
+        // --- Funciones completas para copiar y pegar ---
+        function isPointInsideRect(point, rect) { return point.x > rect.x && point.x < rect.x + rect.width && point.y > rect.y && point.y < rect.y + rect.height; }
+        function drawUI(ctx, point) { ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.fillRect(paletteIcon.x, paletteIcon.y, paletteIcon.width, paletteIcon.height); ctx.font = '40px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(paletteIcon.emoji, paletteIcon.x + paletteIcon.width / 2, paletteIcon.y + paletteIcon.height / 2); ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.fillRect(thicknessIcon.x, thicknessIcon.y, thicknessIcon.width, thicknessIcon.height); ctx.fillStyle = 'white'; ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 15, 30, 3); ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 28, 30, 6); ctx.fillRect(thicknessIcon.x + 15, thicknessIcon.y + 45, 30, 9); if (isPaletteOpen) { colorSwatches = []; colors.forEach((color, index) => { const swatch = { x: paletteIcon.x + (index + 1) * (paletteIcon.width + 10), y: paletteIcon.y, width: paletteIcon.width, height: paletteIcon.height, color: color }; colorSwatches.push(swatch); ctx.fillStyle = color; ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height); if (isPointInsideRect(point, swatch)) { ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4; ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height); } }); } if (isThicknessMenuOpen) { thicknessSwatches = []; thicknessOptions.forEach((size, index) => { const swatch = { x: thicknessIcon.x + (index + 1) * (thicknessIcon.width + 10), y: thicknessIcon.y, width: thicknessIcon.width, height: thicknessIcon.height, size: size }; thicknessSwatches.push(swatch); ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.fillRect(swatch.x, swatch.y, swatch.width, swatch.height); ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(swatch.x + swatch.width / 2, swatch.y + swatch.height / 2, swatch.size, 0, 2 * Math.PI); ctx.fill(); if (isPointInsideRect(point, swatch)) { ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4; ctx.strokeRect(swatch.x, swatch.y, swatch.width, swatch.height); } }); } }
+        function onResults(results) { outputCtx.save(); outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height); let fingerOnUI = false; if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) { const landmarks = results.multiHandLandmarks[0]; drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 }); drawLandmarks(outputCtx, landmarks, { color: 'white', lineWidth: 2, radius: 3 }); const indexTip = landmarks[8]; const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height }; if (isFirstFrame) { smoothedPoint.x = currentPoint.x; smoothedPoint.y = currentPoint.y; isFirstFrame = false; } smoothedPoint.x += (currentPoint.x - smoothedPoint.x) * smoothingFactor; smoothedPoint.y += (currentPoint.y - smoothedPoint.y) * smoothingFactor; if (touchCooldown > 0) touchCooldown--; if (isPaletteOpen) { for (const swatch of colorSwatches) { if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) { drawingCtx.strokeStyle = swatch.color; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } } else if (isThicknessMenuOpen) { for (const swatch of thicknessSwatches) { if (isPointInsideRect(smoothedPoint, swatch) && touchCooldown === 0) { currentLineWidth = swatch.size; drawingCtx.lineWidth = currentLineWidth; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } } if (!fingerOnUI && touchCooldown === 0) { if (isPointInsideRect(smoothedPoint, paletteIcon)) { isPaletteOpen = !isPaletteOpen; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; } else if (isPointInsideRect(smoothedPoint, thicknessIcon)) { isThicknessMenuOpen = !isThicknessMenuOpen; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; } } drawUI(outputCtx, smoothedPoint); if (!fingerOnUI) { const pinched = isPinched(landmarks); const openPalm = isOpenPalm(landmarks); if (openPalm) { isDrawing = false; drawingCtx.clearRect(smoothedPoint.x - eraserSize / 2, smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize); } else if (pinched) { if (!isDrawing) { isDrawing = true; drawingCtx.beginPath(); drawingCtx.moveTo(smoothedPoint.x, smoothedPoint.y); } else { drawingCtx.lineTo(smoothedPoint.x, smoothedPoint.y); drawingCtx.stroke(); } } else { isDrawing = false; } } } else { isDrawing = false; isFirstFrame = true; } outputCtx.restore(); }
+        async function sendToHands() { if (videoElement.readyState >= 3) { await hands.send({ image: videoElement }); } requestAnimationFrame(sendToHands); }
+        function isPinched(landmarks) { const thumbTip = landmarks[4]; const indexTip = landmarks[8]; const distance = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y); return distance < 0.04; }
+        function isOpenPalm(landmarks) { const fingerTips = [8, 12, 16, 20]; const fingerPips = [6, 10, 14, 18]; for (let i = 0; i < fingerTips.length; i++) { if (landmarks[fingerTips[i]].y >= landmarks[fingerPips[i]].y) return false; } return true; }
     </script>
 </body>
 </html>
