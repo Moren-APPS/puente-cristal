@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pizarra Virtual (Versión Multijugador)</title>
+    <title>Pizarra Virtual (Multijugador Estable)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #222; overflow: hidden; }
@@ -51,7 +51,10 @@
         const eraserSize = 60;
         let currentFacingMode = 'user';
         let touchCooldown = 0;
-        let handStates = [];
+        
+        // --- CAMBIO: El estado ahora es un array de jugadores ---
+        let players = [];
+
         const paletteIcon = { x: 30, y: 30, width: 60, height: 60, emoji: '🎨' };
         const thicknessIcon = { x: 30, y: 110, width: 60, height: 60 };
         const clearButton = { x: 0, y: 30, width: 60, height: 60, emoji: '🗑️' };
@@ -72,95 +75,154 @@
             outputCtx.save();
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
             
-            // Dibuja la UI una sola vez. Usa la primera mano para la interacción de hover.
-            const interactionPoint = handStates[0]?.smoothedPoint || {x: -100, y: -100};
+            const interactionPoint = players[0]?.state.smoothedPoint || {x: -100, y: -100};
             drawUI(outputCtx, interactionPoint);
 
+            // --- LÓGICA DE RASTREO POR PROXIMIDAD ---
+            const newHandsData = [];
             if (results.multiHandLandmarks) {
-                // Limpia los estados de las manos que ya no se detectan
-                handStates.length = results.multiHandLandmarks.length;
+                results.multiHandLandmarks.forEach((landmarks, i) => {
+                    // Guarda la posición central de la nueva mano detectada
+                    newHandsData.push({
+                        landmarks: landmarks,
+                        center: { x: landmarks[9].x, y: landmarks[9].y }
+                    });
+                });
+            }
 
-                results.multiHandLandmarks.forEach((landmarks, index) => {
-                    let state = handStates[index];
-                    if (!state) {
-                        state = handStates[index] = {
-                            lastPosition: null, // Reemplaza isDrawing
-                            isFirstFrame: true,
-                            smoothedPoint: { x: 0, y: 0 },
-                            smoothedMidpoint: { x: 0, y: 0 },
-                            smoothedPencilTip: { x: 0, y: 0 }
-                        };
-                    }
+            const matchedPlayers = [];
+            const unmatchedHands = [...newHandsData];
+            const unmatchedPlayers = [...players];
 
-                    drawConnectors(outputCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                    drawLandmarks(outputCtx, landmarks, { color: '#FFFFFF', lineWidth: 2, radius: 3 });
-                    
-                    const indexTip = landmarks[8];
-                    const thumbTip = landmarks[4];
-                    const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
-                    const midpointX = ((thumbTip.x + indexTip.x) / 2) * outputCanvas.width;
-                    const midpointY = ((thumbTip.y + indexTip.y) / 2) * outputCanvas.height;
+            // Intenta emparejar jugadores existentes con las manos detectadas más cercanas
+            unmatchedPlayers.forEach(player => {
+                let closestHandIndex = -1;
+                let minDistance = 0.1; // Umbral de distancia para considerar un emparejamiento
 
-                    if (state.isFirstFrame) {
-                        state.smoothedPoint.x = currentPoint.x; state.smoothedPoint.y = currentPoint.y;
-                        state.smoothedMidpoint.x = midpointX; state.smoothedMidpoint.y = midpointY;
-                        state.smoothedPencilTip.x = midpointX; state.smoothedPencilTip.y = midpointY;
-                        state.isFirstFrame = false;
-                    }
-
-                    state.smoothedPoint.x += (currentPoint.x - state.smoothedPoint.x) * smoothingFactor;
-                    state.smoothedPoint.y += (currentPoint.y - state.smoothedPoint.y) * smoothingFactor;
-                    state.smoothedMidpoint.x += (midpointX - state.smoothedMidpoint.x) * smoothingFactor;
-                    state.smoothedMidpoint.y += (midpointY - state.smoothedMidpoint.y) * smoothingFactor;
-
-                    const pencilAngle = Math.PI / 4;
-                    const pencilHalfLength = 90 / 2;
-                    const rawTipX = state.smoothedMidpoint.x + pencilHalfLength * Math.cos(pencilAngle);
-                    const rawTipY = state.smoothedMidpoint.y + pencilHalfLength * Math.sin(pencilAngle);
-                    
-                    state.smoothedPencilTip.x += (rawTipX - state.smoothedPencilTip.x) * smoothingFactor;
-                    state.smoothedPencilTip.y += (rawTipY - state.smoothedPencilTip.y) * smoothingFactor;
-
-                    let fingerOnUI = false;
-                    if (touchCooldown > 0) touchCooldown--;
-                    
-                    if (isPaletteOpen) { for (const swatch of colorSwatches) { if (isPointInsideRect(state.smoothedPoint, swatch) && touchCooldown === 0) { drawingCtx.strokeStyle = swatch.color; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } } else if (isThicknessMenuOpen) { for (const swatch of thicknessSwatches) { if (isPointInsideRect(state.smoothedPoint, swatch) && touchCooldown === 0) { currentLineWidth = swatch.size; drawingCtx.lineWidth = currentLineWidth; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } }
-                    if (!fingerOnUI && touchCooldown === 0) { if (isPointInsideRect(state.smoothedPoint, clearButton)) { drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height); touchCooldown = 20; fingerOnUI = true; } else if (isPointInsideRect(state.smoothedPoint, paletteIcon)) { isPaletteOpen = !isPaletteOpen; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; } else if (isPointInsideRect(state.smoothedPoint, thicknessIcon)) { isThicknessMenuOpen = !isThicknessMenuOpen; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; } }
-                    
-                    if (!fingerOnUI) {
-                        const pinched = isPinched(landmarks);
-                        const openPalm = isOpenPalm(landmarks);
-                        if (openPalm) {
-                            drawingCtx.clearRect(state.smoothedPoint.x - eraserSize / 2, state.smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize);
-                            outputCtx.save();
-                            const eraserBodyWidth = eraserSize; const eraserBodyHeight = eraserSize * 0.6;
-                            const x = state.smoothedPoint.x - eraserBodyWidth / 2; const y = state.smoothedPoint.y - eraserBodyHeight / 2;
-                            outputCtx.fillStyle = 'rgba(255, 105, 180, 0.8)';
-                            outputCtx.fillRect(x, y, eraserBodyWidth, eraserBodyHeight);
-                            outputCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-                            outputCtx.lineWidth = 2;
-                            outputCtx.strokeRect(x, y, eraserBodyWidth, eraserBodyHeight);
-                            outputCtx.restore();
-                            state.lastPosition = null;
-                        } else if (pinched) {
-                            // --- CAMBIO: Lógica de dibujo por segmentos ---
-                            if (state.lastPosition) {
-                                drawingCtx.beginPath();
-                                drawingCtx.moveTo(state.lastPosition.x, state.lastPosition.y);
-                                drawingCtx.lineTo(state.smoothedPencilTip.x, state.smoothedPencilTip.y);
-                                drawingCtx.stroke();
-                            }
-                            state.lastPosition = { x: state.smoothedPencilTip.x, y: state.smoothedPencilTip.y };
-                            drawPencilCursor(outputCtx, state.smoothedMidpoint);
-                        } else {
-                            state.lastPosition = null;
-                        }
+                unmatchedHands.forEach((hand, index) => {
+                    const distance = Math.hypot(hand.center.x - player.lastCenter.x, hand.center.y - player.lastCenter.y);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestHandIndex = index;
                     }
                 });
-            } else {
-                handStates.forEach(state => state.isFirstFrame = true);
-            }
+
+                if (closestHandIndex !== -1) {
+                    player.update(unmatchedHands[closestHandIndex].landmarks);
+                    matchedPlayers.push(player);
+                    unmatchedHands.splice(closestHandIndex, 1);
+                }
+            });
+
+            // Asigna las manos no emparejadas a nuevos jugadores
+            unmatchedHands.forEach(hand => {
+                const newPlayer = new Player(hand.landmarks);
+                matchedPlayers.push(newPlayer);
+            });
+            
+            players = matchedPlayers; // Actualiza la lista de jugadores activos
+
+            // --- LÓGICA DE DIBUJO Y PROCESAMIENTO POR JUGADOR ---
+            players.forEach((player, index) => {
+                player.process(); // Calcula posiciones suavizadas, etc.
+                
+                // Asigna un nombre de jugador basado en el orden en que aparecen ahora
+                const playerLabel = `Jugador ${index + 1}`;
+                const wrist = player.landmarks[0];
+                const wristX = wrist.x * outputCanvas.width;
+                const wristY = wrist.y * outputCanvas.height;
+                outputCtx.fillStyle = 'white';
+                outputCtx.font = 'bold 24px sans-serif';
+                outputCtx.textAlign = 'center';
+                outputCtx.fillText(playerLabel, wristX, wristY - 30);
+                
+                player.drawHand(); // Dibuja el esqueleto
+                player.handleActions(); // Dibuja, borra e interactúa con la UI
+            });
+
             outputCtx.restore();
+        }
+
+        // --- NUEVO: Clase para manejar el estado de cada jugador ---
+        class Player {
+            constructor(landmarks) {
+                this.landmarks = landmarks;
+                this.lastCenter = { x: landmarks[9].x, y: landmarks[9].y };
+                this.state = {
+                    lastPosition: null, isFirstFrame: true,
+                    smoothedPoint: { x: 0, y: 0 }, smoothedMidpoint: { x: 0, y: 0 },
+                    smoothedPencilTip: { x: 0, y: 0 }
+                };
+            }
+            
+            update(landmarks) {
+                this.landmarks = landmarks;
+                this.lastCenter = { x: landmarks[9].x, y: landmarks[9].y };
+            }
+
+            process() {
+                const indexTip = this.landmarks[8];
+                const thumbTip = this.landmarks[4];
+                const currentPoint = { x: indexTip.x * outputCanvas.width, y: indexTip.y * outputCanvas.height };
+                const midpointX = ((thumbTip.x + indexTip.x) / 2) * outputCanvas.width;
+                const midpointY = ((thumbTip.y + indexTip.y) / 2) * outputCanvas.height;
+                if (this.state.isFirstFrame) {
+                    this.state.smoothedPoint.x = currentPoint.x; this.state.smoothedPoint.y = currentPoint.y;
+                    this.state.smoothedMidpoint.x = midpointX; this.state.smoothedMidpoint.y = midpointY;
+                    this.state.smoothedPencilTip.x = midpointX; this.state.smoothedPencilTip.y = midpointY;
+                    this.state.isFirstFrame = false;
+                }
+                this.state.smoothedPoint.x += (currentPoint.x - this.state.smoothedPoint.x) * smoothingFactor;
+                this.state.smoothedPoint.y += (currentPoint.y - this.state.smoothedPoint.y) * smoothingFactor;
+                this.state.smoothedMidpoint.x += (midpointX - this.state.smoothedMidpoint.x) * smoothingFactor;
+                this.state.smoothedMidpoint.y += (midpointY - this.state.smoothedMidpoint.y) * smoothingFactor;
+                const pencilAngle = Math.PI / 4;
+                const pencilHalfLength = 90 / 2;
+                const rawTipX = this.state.smoothedMidpoint.x + pencilHalfLength * Math.cos(pencilAngle);
+                const rawTipY = this.state.smoothedMidpoint.y + pencilHalfLength * Math.sin(pencilAngle);
+                this.state.smoothedPencilTip.x += (rawTipX - this.state.smoothedPencilTip.x) * smoothingFactor;
+                this.state.smoothedPencilTip.y += (rawTipY - this.state.smoothedPencilTip.y) * smoothingFactor;
+            }
+
+            drawHand() {
+                drawConnectors(outputCtx, this.landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                drawLandmarks(outputCtx, this.landmarks, { color: '#FFFFFF', lineWidth: 2, radius: 3 });
+            }
+
+            handleActions() {
+                let fingerOnUI = false;
+                if (touchCooldown > 0) touchCooldown--;
+                if (isPaletteOpen) { for (const swatch of colorSwatches) { if (isPointInsideRect(this.state.smoothedPoint, swatch) && touchCooldown === 0) { drawingCtx.strokeStyle = swatch.color; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } } else if (isThicknessMenuOpen) { for (const swatch of thicknessSwatches) { if (isPointInsideRect(this.state.smoothedPoint, swatch) && touchCooldown === 0) { currentLineWidth = swatch.size; drawingCtx.lineWidth = currentLineWidth; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; break; } } }
+                if (!fingerOnUI && touchCooldown === 0) { if (isPointInsideRect(this.state.smoothedPoint, clearButton)) { drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height); touchCooldown = 20; fingerOnUI = true; } else if (isPointInsideRect(this.state.smoothedPoint, paletteIcon)) { isPaletteOpen = !isPaletteOpen; isThicknessMenuOpen = false; touchCooldown = 20; fingerOnUI = true; } else if (isPointInsideRect(this.state.smoothedPoint, thicknessIcon)) { isThicknessMenuOpen = !isThicknessMenuOpen; isPaletteOpen = false; touchCooldown = 20; fingerOnUI = true; } }
+                
+                if (!fingerOnUI) {
+                    const pinched = isPinched(this.landmarks);
+                    const openPalm = isOpenPalm(this.landmarks);
+                    if (openPalm) {
+                        this.state.lastPosition = null;
+                        drawingCtx.clearRect(this.state.smoothedPoint.x - eraserSize / 2, this.state.smoothedPoint.y - eraserSize / 2, eraserSize, eraserSize);
+                        outputCtx.save();
+                        const x = this.state.smoothedPoint.x - eraserSize / 2; const y = this.state.smoothedPoint.y - (eraserSize * 0.6) / 2;
+                        outputCtx.fillStyle = 'rgba(255, 105, 180, 0.8)';
+                        outputCtx.fillRect(x, y, eraserSize, eraserSize * 0.6);
+                        outputCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                        outputCtx.lineWidth = 2;
+                        outputCtx.strokeRect(x, y, eraserSize, eraserSize * 0.6);
+                        outputCtx.restore();
+                    } else if (pinched) {
+                        if (this.state.lastPosition) {
+                            drawingCtx.beginPath();
+                            drawingCtx.moveTo(this.state.lastPosition.x, this.state.lastPosition.y);
+                            drawingCtx.lineTo(this.state.smoothedPencilTip.x, this.state.smoothedPencilTip.y);
+                            drawingCtx.stroke();
+                        }
+                        this.state.lastPosition = { x: this.state.smoothedPencilTip.x, y: this.state.smoothedPencilTip.y };
+                        drawPencilCursor(outputCtx, this.state.smoothedMidpoint);
+                    } else {
+                        this.state.lastPosition = null;
+                    }
+                }
+            }
         }
 
         function resizeCanvases() { const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight; if (!videoWidth) return; outputCanvas.width = videoWidth; outputCanvas.height = videoHeight; drawingCanvas.width = videoWidth; drawingCanvas.height = videoHeight; clearButton.x = outputCanvas.width - clearButton.width - 30; drawingCtx.strokeStyle = drawingCtx.strokeStyle || '#00FFFF'; drawingCtx.lineWidth = currentLineWidth; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; }
@@ -181,7 +243,7 @@
                     if (!handsInitialized) {
                         hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
                         hands.setOptions({
-                            maxNumHands: 2,
+                            maxNumHands: 2, 
                             modelComplexity: 1,
                             minDetectionConfidence: 0.7,
                             minTrackingConfidence: 0.7
