@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Aventura de Manos Estilo Mario</title>
+    <title>Aventura de Manos en 3D</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: 'Press Start 2P', sans-serif; background-color: #5C94FC; overflow: hidden; }
@@ -23,8 +23,8 @@
 </head>
 <body>
     <div id="overlay">
-        <h1>¡Aventura de Manos!</h1>
-        <p>¡Corre hacia adelante y salta para romper los bloques con tu mano!</p>
+        <h1>¡Aventura de Salto!</h1>
+        <p>¡Corre hacia adelante y salta con tu mano para romper los bloques y aplastar enemigos!</p>
         <button id="startButton">Iniciar Juego</button>
     </div>
     <div id="container">
@@ -40,109 +40,129 @@
         const gameCtx = gameCanvas.getContext('2d');
         const loadingElement = document.getElementById('loading');
         
-        let hands, activeStream;
-        let handsInitialized = false;
+        let hands, activeStream, handsInitialized = false;
         const smoothingFactor = 0.4;
 
         // --- ESTADO DEL JUEGO ---
         let player = null;
-        let blocks = [];
+        let gameObjects = [];
         let score = 0;
-        let blockSpawnTimer = 0;
-        const PUNCH_VELOCITY_THRESHOLD = 5; // Sensibilidad del golpe
+        let objectSpawnTimer = 0;
+        const PUNCH_VELOCITY_THRESHOLD = 5;
 
-        // --- Clase para los Bloques ---
-        class Block {
+        // --- ESTADO DEL FONDO ---
+        let groundY;
+        let clouds = [];
+        let hills = [];
+        
+        // --- Clase Base para Objetos del Juego ---
+        class GameObject {
             constructor() {
-                this.width = 80;
-                this.height = 80;
-                this.x = Math.random() * (gameCanvas.width - this.width);
-                this.y = -this.height;
-                this.speed = 2 + Math.random() * 2; // Velocidad aleatoria
+                this.baseWidth = 80;
+                this.baseHeight = 80;
+                this.scale = 0.1; // Inicia pequeño
+                this.horizonY = gameCanvas.height / 2.2;
+                this.x = Math.random() * gameCanvas.width;
+                this.y = this.horizonY;
+                this.speed = 0.005 + Math.random() * 0.005; // Velocidad de escalado
                 this.active = true;
             }
 
             update() {
-                this.y += this.speed;
-                if (this.y > gameCanvas.height) {
+                this.scale += this.speed;
+                // Mueve el objeto hacia abajo a medida que crece
+                this.y = this.horizonY + (this.scale * 150);
+                if (this.y > gameCanvas.height + this.height) {
                     this.active = false;
                 }
             }
+            
+            get currentWidth() { return this.baseWidth * this.scale; }
+            get currentHeight() { return this.baseHeight * this.scale; }
+            get currentX() { return this.x - this.currentWidth / 2; }
+            get currentY() { return this.y - this.currentHeight / 2; }
+        }
 
-            draw() {
-                // Caja principal
+        // --- Clase para los Bloques ---
+        class Block extends GameObject {
+             draw() {
+                const x = this.currentX;
+                const y = this.currentY;
+                const w = this.currentWidth;
+                const h = this.currentHeight;
+
                 gameCtx.fillStyle = '#D95E00';
-                gameCtx.fillRect(this.x, this.y, this.width, this.height);
+                gameCtx.fillRect(x, y, w, h);
                 gameCtx.strokeStyle = 'black';
-                gameCtx.lineWidth = 5;
-                gameCtx.strokeRect(this.x, this.y, this.width, this.height);
+                gameCtx.lineWidth = Math.max(1, 5 * this.scale);
+                gameCtx.strokeRect(x, y, w, h);
 
-                // Sombra para efecto 3D
-                gameCtx.fillStyle = '#8F2300';
-                gameCtx.beginPath();
-                gameCtx.moveTo(this.x, this.y + this.height);
-                gameCtx.lineTo(this.x + 5, this.y + this.height + 5);
-                gameCtx.lineTo(this.x + this.width + 5, this.y + this.height + 5);
-                gameCtx.lineTo(this.x + this.width, this.y + this.height);
-                gameCtx.closePath();
-                gameCtx.fill();
-                gameCtx.beginPath();
-                gameCtx.moveTo(this.x + this.width, this.y);
-                gameCtx.lineTo(this.x + this.width + 5, this.y + 5);
-                gameCtx.lineTo(this.x + this.width + 5, this.y + this.height + 5);
-                gameCtx.lineTo(this.x + this.width, this.y + this.height);
-                gameCtx.closePath();
-                gameCtx.fill();
-
-                // Signo de interrogación
                 gameCtx.fillStyle = 'white';
-                gameCtx.font = 'bold 50px "Press Start 2P"';
+                gameCtx.font = `bold ${40 * this.scale}px "Press Start 2P"`;
                 gameCtx.textAlign = 'center';
                 gameCtx.textBaseline = 'middle';
-                gameCtx.fillText('?', this.x + this.width / 2, this.y + this.height / 2 + 5);
+                gameCtx.fillText('?', x + w / 2, y + h / 2 + (5 * this.scale));
+            }
+        }
+
+        // --- Clase para los Goombas ---
+        class Goomba extends GameObject {
+            constructor() {
+                super();
+                this.baseWidth = 80;
+                this.baseHeight = 80;
+                this.speed = 0.004 + Math.random() * 0.004; // Un poco más lento
+            }
+            draw() {
+                const x = this.currentX;
+                const y = this.currentY;
+                const w = this.currentWidth;
+                const h = this.currentHeight;
+
+                // Cuerpo
+                gameCtx.fillStyle = '#6B2E04'; // Marrón oscuro
+                gameCtx.beginPath();
+                gameCtx.moveTo(x + w * 0.1, y + h);
+                gameCtx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h);
+                gameCtx.closePath();
+                gameCtx.fill();
+
+                // Cabeza
+                gameCtx.fillStyle = '#D95E00'; // Marrón claro
+                gameCtx.beginPath();
+                gameCtx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI);
+                gameCtx.fill();
+                
+                // Ojos
+                gameCtx.fillStyle = 'white';
+                gameCtx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2);
+                gameCtx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2);
+                gameCtx.fillStyle = 'black';
+                gameCtx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1);
+                gameCtx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1);
             }
         }
         
-        // --- Clase para el Jugador (la mano) ---
         class Player {
             constructor(landmarks) {
                 this.landmarks = landmarks;
-                this.state = {
-                    isFirstFrame: true,
-                    smoothedPoint: { x: 0, y: 0 }, // nudillo del dedo índice
-                    verticalVelocity: 0,
-                    lastY: 0
-                };
+                this.state = { isFirstFrame: true, smoothedPoint: { x: 0, y: 0 }, verticalVelocity: 0, lastY: 0 };
             }
-            
-            update(landmarks) {
-                this.landmarks = landmarks;
-            }
-
+            update(landmarks) { this.landmarks = landmarks; }
             process() {
-                const indexKuckle = this.landmarks[5]; // Usamos el nudillo para más estabilidad
+                const indexKuckle = this.landmarks[5];
                 const currentPoint = { x: indexKuckle.x * gameCanvas.width, y: indexKuckle.y * gameCanvas.height };
-                
                 if (this.state.isFirstFrame) {
-                    this.state.smoothedPoint.x = currentPoint.x;
-                    this.state.smoothedPoint.y = currentPoint.y;
+                    this.state.smoothedPoint = { ...currentPoint };
                     this.state.lastY = currentPoint.y;
                     this.state.isFirstFrame = false;
                 }
-
                 this.state.smoothedPoint.x += (currentPoint.x - this.state.smoothedPoint.x) * smoothingFactor;
                 this.state.smoothedPoint.y += (currentPoint.y - this.state.smoothedPoint.y) * smoothingFactor;
-                
-                // Calcular velocidad vertical para detectar el "salto" o "golpe"
                 this.state.verticalVelocity = this.state.smoothedPoint.y - this.state.lastY;
                 this.state.lastY = this.state.smoothedPoint.y;
             }
-
-            isPunching() {
-                // Un valor negativo grande significa un movimiento rápido hacia arriba
-                return this.state.verticalVelocity < -PUNCH_VELOCITY_THRESHOLD;
-            }
-
+            isPunching() { return this.state.verticalVelocity < -PUNCH_VELOCITY_THRESHOLD; }
             drawHand() {
                 drawConnectors(gameCtx, this.landmarks, HAND_CONNECTIONS, { color: '#FFFFFF', lineWidth: 6 });
                 drawConnectors(gameCtx, this.landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
@@ -150,54 +170,82 @@
             }
         }
 
-        function isPointInsideRect(point, rect) {
-             return point.x > rect.x && point.x < rect.x + rect.width && 
-                    point.y > rect.y && point.y < rect.y + rect.height;
+        function isPointInsideRect(point, obj) {
+             return point.x > obj.currentX && point.x < obj.currentX + obj.currentWidth && 
+                    point.y > obj.currentY && point.y < obj.currentY + obj.currentHeight;
+        }
+        
+        function initBackground() {
+            groundY = gameCanvas.height * 0.75;
+            for (let i = 0; i < 5; i++) {
+                hills.push({ x: Math.random() * gameCanvas.width, y: groundY, r: 40 + Math.random() * 40 });
+                clouds.push({ x: Math.random() * gameCanvas.width, y: 50 + Math.random() * 100, r: 20 + Math.random() * 20, speed: 0.2 + Math.random() * 0.3 });
+            }
+        }
+
+        function drawBackground() {
+            // Cielo
+            gameCtx.fillStyle = '#5C94FC';
+            gameCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            
+            // Nubes
+            clouds.forEach(cloud => {
+                cloud.x += cloud.speed;
+                if(cloud.x > gameCanvas.width + cloud.r * 2) cloud.x = -cloud.r * 2;
+                
+                gameCtx.fillStyle = 'white';
+                gameCtx.beginPath();
+                gameCtx.arc(cloud.x, cloud.y, cloud.r, 0, Math.PI * 2);
+                gameCtx.arc(cloud.x + cloud.r * 0.8, cloud.y, cloud.r * 0.8, 0, Math.PI * 2);
+                gameCtx.arc(cloud.x - cloud.r * 0.8, cloud.y, cloud.r * 0.8, 0, Math.PI * 2);
+                gameCtx.fill();
+            });
+
+            // Suelo
+            gameCtx.fillStyle = '#008000'; // Verde
+            gameCtx.fillRect(0, groundY, gameCanvas.width, gameCanvas.height - groundY);
         }
 
         function onResults(results) {
             gameCtx.save();
             gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
             
-            // --- LÓGICA DEL JUEGO ---
-            
-            // 1. Actualizar y dibujar bloques
-            blockSpawnTimer++;
-            if (blockSpawnTimer > 100) { // Genera un bloque cada 100 frames aprox.
-                blocks.push(new Block());
-                blockSpawnTimer = 0;
+            drawBackground();
+
+            objectSpawnTimer++;
+            if (objectSpawnTimer > 120) {
+                if (Math.random() > 0.4) gameObjects.push(new Block());
+                else gameObjects.push(new Goomba());
+                objectSpawnTimer = 0;
             }
             
-            blocks.forEach(block => {
-                block.update();
-                block.draw();
+            // Ordenar por escala para que los objetos más cercanos se dibujen al frente
+            gameObjects.sort((a, b) => a.scale - b.scale);
+
+            gameObjects.forEach(obj => {
+                obj.update();
+                obj.draw();
             });
             
-            // 2. Actualizar Jugador
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const handLandmarks = results.multiHandLandmarks[0]; // Solo nos importa la primera mano
-                if (!player) {
-                    player = new Player(handLandmarks);
-                }
+                const handLandmarks = results.multiHandLandmarks[0];
+                if (!player) player = new Player(handLandmarks);
                 player.update(handLandmarks);
                 player.process();
                 player.drawHand();
 
-                // 3. Detección de Colisiones
-                blocks.forEach(block => {
-                    if (block.active && player.isPunching() && isPointInsideRect(player.state.smoothedPoint, block)) {
-                        block.active = false; // "Rompemos" el bloque
+                gameObjects.forEach(obj => {
+                    if (obj.active && player.isPunching() && isPointInsideRect(player.state.smoothedPoint, obj)) {
+                        obj.active = false;
                         score++;
                     }
                 });
             } else {
-                player = null; // Si no se detecta mano, no hay jugador
+                player = null;
             }
             
-            // 4. Eliminar bloques inactivos
-            blocks = blocks.filter(block => block.active);
+            gameObjects = gameObjects.filter(obj => obj.active);
 
-            // 5. Dibujar Puntuación
             gameCtx.fillStyle = 'white';
             gameCtx.font = '36px "Press Start 2P"';
             gameCtx.textAlign = 'left';
@@ -206,7 +254,6 @@
             gameCtx.shadowBlur = 5;
             gameCtx.fillText(`Puntos: ${score}`, 20, 20);
             gameCtx.shadowBlur = 0;
-
 
             gameCtx.restore();
         }
@@ -217,28 +264,23 @@
             if (!videoWidth) return;
             gameCanvas.width = videoWidth;
             gameCanvas.height = videoHeight;
+            initBackground();
         }
         
         async function startCamera() {
             loadingElement.style.display = 'block';
-            if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); }
+            if (activeStream) activeStream.getTracks().forEach(track => track.stop());
             const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } };
             try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                activeStream = stream;
-                videoElement.srcObject = stream;
+                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = activeStream;
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
                     loadingElement.style.display = 'none';
                     resizeCanvases();
                     if (!handsInitialized) {
                         hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-                        hands.setOptions({
-                            maxNumHands: 1, // Solo necesitamos una mano para el juego
-                            modelComplexity: 1,
-                            minDetectionConfidence: 0.6,
-                            minTrackingConfidence: 0.6
-                        });
+                        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
                         hands.onResults(onResults);
                         sendToHands();
                         handsInitialized = true;
