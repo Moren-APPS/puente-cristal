@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Aventura Definitiva (Versión Final)</title>
+    <title>Aventura de Inmersión Total (Versión Final)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: 'Press Start 2P', sans-serif; background-color: #222; overflow: hidden; }
@@ -19,11 +19,44 @@
         .instruction-item { display: flex; align-items: center; margin-bottom: 20px; }
         .instruction-item canvas { position: static; transform: none; width: 80px; height: 80px; margin-right: 20px; background: #5c94fca2; border-radius: 5px; }
         .instruction-text { font-size: 1em; text-align: left; }
+
+        /* --- NUEVO: Estilos para la pantalla de rotación --- */
+        #rotate-overlay {
+            display: none; /* Oculto por defecto */
+            z-index: 200; /* Por encima de todo */
+        }
+        #rotate-overlay p {
+            font-size: 1.5em;
+            margin-top: 20px;
+        }
+        #rotate-icon {
+            font-size: 5em;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            100% { transform: rotate(90deg); }
+        }
+
+        /* Media Query para detectar la pantalla en vertical */
+        @media (orientation: portrait) {
+            #rotate-overlay {
+                display: flex; /* Se muestra cuando la pantalla está en vertical */
+            }
+            #instructions, #container, #gameOver {
+                display: none; /* Oculta el resto cuando está en vertical */
+            }
+        }
+
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 </head>
 <body>
+    <div id="rotate-overlay" class="overlay">
+        <div id="rotate-icon">🔄</div>
+        <p>Por favor, gira tu dispositivo</p>
+    </div>
+
     <div id="instructions" class="overlay">
         <h1>¡Cómo Jugar!</h1>
         <div class="instruction-item">
@@ -133,25 +166,13 @@
                 translatedLandmarks.forEach(lm => { lm.y -= (jumpOffset / gameCanvas.height); });
                 drawConnectors(gameCtx, translatedLandmarks, CUSTOM_BODY_CONNECTIONS, { color: 'rgba(255, 255, 255, 0.8)', lineWidth: 8 });
                 drawLandmarks(gameCtx, translatedLandmarks, { color: (data) => data.index > 10 ? 'rgba(255, 255, 255, 0.8)' : 'transparent', radius: 4 });
-                
-                // Dibujar guantes blancos
-                const leftHandIndices = [15, 17, 19];
-                const rightHandIndices = [16, 18, 20];
-                gameCtx.fillStyle = 'white';
-                [...leftHandIndices, ...rightHandIndices].forEach(index => {
-                    const lm = translatedLandmarks[index];
-                    if (lm) {
-                        gameCtx.beginPath();
-                        gameCtx.arc(lm.x * gameCanvas.width, lm.y * gameCanvas.height, 15, 0, 2 * Math.PI);
-                        gameCtx.fill();
-                    }
-                });
             }
-            collidesWithDodge(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11]; const rightShoulder = this.landmarks[12]; if(!leftShoulder || !rightShoulder) return false; const playerLeft = Math.min(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const playerRight = Math.max(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const objLeft = obj.currentX; const objRight = obj.currentX + obj.currentWidth; return playerRight > objLeft && playerLeft < objRight; }
+            collidesWith(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11].x * gameCanvas.width; const rightShoulder = this.landmarks[12].x * gameCanvas.width; const playerLeft = Math.min(leftShoulder, rightShoulder); const playerRight = Math.max(leftShoulder, rightShoulder); const objLeft = obj.isCollectible ? obj.x - obj.baseWidth/2 : obj.currentX; const objRight = obj.isCollectible ? obj.x + obj.baseWidth/2 : obj.currentX + obj.currentWidth; const horizontalOverlap = playerRight > objLeft && playerLeft < objRight; return horizontalOverlap; }
         }
 
         function gameLoop() {
             if (gameOver) return;
+            requestAnimationFrame(gameLoop);
             gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
             drawBackground();
             if (segmentationMask) {
@@ -185,9 +206,9 @@
                 gameObjects.forEach(obj => {
                     if (obj.active) {
                         if (obj.isDodgeable && obj.scale > ACTION_SCALE_THRESHOLD) {
-                            if (playerTracker.collidesWithDodge(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); }
+                            if (playerTracker.collidesWith(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); }
                         } else if (obj.isCollectible) {
-                            if (isHandCollidingWithCoin(playerTracker, obj)) { obj.active = false; coins++; }
+                            if (playerTracker.collidesWith(obj)) { obj.active = false; coins++; }
                         } else if (obj instanceof Goomba) {
                             if (isStomping(playerTracker, obj)) { createExplosion(obj.currentX + obj.currentWidth/2, obj.currentY + obj.currentHeight/2, 'brown'); obj.active = false; score++; }
                         } else if (obj instanceof Block) {
@@ -207,7 +228,6 @@
             }
             gameObjects = gameObjects.filter(obj => obj.active);
             drawUI();
-            requestAnimationFrame(gameLoop);
         }
         
         function onResults(results) {
@@ -240,28 +260,15 @@
             requestAnimationFrame(sendToPose);
         }
         
-        // --- CORRECCIÓN DEFINITIVA para dibujar las figuras en las instrucciones ---
         function drawInstructionFigures() {
-            const blockCtx = document.getElementById('instr-block').getContext('2d');
-            new Block().draw(blockCtx, {x:10, y:10});
-            const coinCtx = document.getElementById('instr-coin').getContext('2d');
-            new Coin().draw(coinCtx, {x:20, y:20});
-            
-            function drawStaticGoomba(ctx) {
-                const w = 64, h = 64, x = 8, y = 8;
-                ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill();
-                ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2);
-                ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1);
-            }
-            function drawStaticPlant(ctx) {
-                const w = 70, h = 84, x = 5, y = -2;
-                ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5);
-                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill();
-            }
-            drawStaticGoomba(document.getElementById('instr-goomba').getContext('2d'));
-            drawStaticPlant(document.getElementById('instr-plant').getContext('2d'));
+            new Block().draw(document.getElementById('instr-block').getContext('2d'), { x: 10, y: 10 });
+            new Coin().draw(document.getElementById('instr-coin').getContext('2d'), { x: 40, y: 40 });
+            const goombaCtx = document.getElementById('instr-goomba').getContext('2d');
+            const mockGoomba = { scale: 0.8, baseWidth: 80, baseHeight: 80, currentX: 8, currentY: 8, currentWidth: 64, currentHeight: 64 };
+            Goomba.prototype.draw.call(mockGoomba, goombaCtx);
+            const plantCtx = document.getElementById('instr-plant').getContext('2d');
+            const mockPlant = { scale: 0.7, baseWidth: 100, baseHeight: 120, currentX: 5, currentY: 10, currentWidth: 70, currentHeight: 84 };
+            PiranhaPlant.prototype.draw.call(mockPlant, plantCtx);
         }
         window.onload = drawInstructionFigures;
         
@@ -301,28 +308,6 @@
             drawBackground();
         }
         
-        // --- NUEVA función de colisión específica para monedas ---
-        function isHandCollidingWithCoin(player, coin) {
-            if (!player.landmarks) return false;
-            const coinCenterX = coin.x;
-            const coinCenterY = coin.y;
-            const coinRadiusSq = (coin.baseWidth / 2) ** 2;
-            const handIndices = [15, 16, 17, 18, 19, 20]; // Muñecas, índices y meñiques
-
-            for (const index of handIndices) {
-                const lm = player.landmarks[index];
-                if (lm) {
-                    const pointX = lm.x * gameCanvas.width;
-                    const pointY = lm.y * gameCanvas.height;
-                    const distSq = (pointX - coinCenterX) ** 2 + (pointY - coinCenterY) ** 2;
-                    if (distSq < coinRadiusSq) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         function isStomping(player, obj) { if (!player.landmarks || !player.isFalling() || obj.scale < ACTION_SCALE_THRESHOLD) return false; const leftAnkle = player.landmarks[27]; const rightAnkle = player.landmarks[28]; let jumpOffset = 0; if (player.jumpTimer > 0) { const progress = (AVATAR_JUMP_DURATION - player.jumpTimer) / AVATAR_JUMP_DURATION; jumpOffset = Math.sin(progress * Math.PI) * AVATAR_JUMP_HEIGHT; } const avgAnkleX = ((leftAnkle.x + rightAnkle.x) / 2) * gameCanvas.width; const avgAnkleY = ((leftAnkle.y + rightAnkle.y) / 2) * gameCanvas.height - jumpOffset; const horizontalMatch = avgAnkleX > obj.currentX && avgAnkleX < obj.currentX + obj.currentWidth; const verticalMatch = Math.abs(avgAnkleY - obj.currentY) < 40; return horizontalMatch && verticalMatch; }
         function createExplosion(x, y, color) { for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color)); }
         function triggerGameOver() { gameOver = true; gameOverOverlay.style.display = 'flex'; document.getElementById('finalScore').innerText = `Puntuación: ${score} | Monedas: ${coins}`; }
