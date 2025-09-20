@@ -9,13 +9,13 @@
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         video { display: none; }
-        /* Canvas se ajustará por JS, solo mantenemos lo esencial */
         canvas {
             position: absolute;
             max-width: 100%;
             max-height: 100%;
             border-radius: 10px;
-            transform: scaleX(-1); /* Mantenemos el efecto espejo */
+            transform: scaleX(-1);
+            z-index: 1; /* Aseguramos que el canvas esté visible */
         }
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.85); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; }
         h1 { font-size: 2em; margin-bottom: 20px; text-shadow: 3px 3px #000; color: #fbd000; }
@@ -33,22 +33,10 @@
 <body>
     <div id="instructions" class="overlay">
         <h1>¡Cómo Jugar!</h1>
-        <div class="instruction-item">
-            <canvas id="instr-block" width="80" height="80"></canvas>
-            <div class="instruction-text"><strong>Bloque:</strong> ¡SALTA y GOLPEA con tu mano para romperlos! Algunos esconden monedas.</div>
-        </div>
-        <div class="instruction-item">
-            <canvas id="instr-goomba" width="80" height="80"></canvas>
-            <div class="instruction-text"><strong>Goomba:</strong> ¡SALTA y ATERRIZA sobre ellos para aplastarlos! No hacen daño. Sabrás que es el momento cuando parpadeen.</div>
-        </div>
-        <div class="instruction-item">
-            <canvas id="instr-plant" width="80" height="80"></canvas>
-            <div class="instruction-text"><strong>Planta Piraña:</strong> ¡MUÉVETE a los lados para esquivarlas! Un borde rojo parpadeante te avisará del peligro.</div>
-        </div>
-        <div class="instruction-item">
-            <canvas id="instr-coin" width="80" height="80"></canvas>
-            <div class="instruction-text"><strong>Moneda:</strong> ¡TÓCALAS con tus manos para recolectarlas! Aparecen solas o al romper bloques.</div>
-        </div>
+        <div class="instruction-item"><canvas id="instr-block" width="80" height="80"></canvas><div class="instruction-text"><strong>Bloque:</strong> ¡SALTA y GOLPEA con tu mano para romperlos! Algunos esconden monedas.</div></div>
+        <div class="instruction-item"><canvas id="instr-goomba" width="80" height="80"></canvas><div class="instruction-text"><strong>Goomba:</strong> ¡SALTA y ATERRIZA sobre ellos para aplastarlos! No hacen daño. Sabrás que es el momento cuando parpadeen.</div></div>
+        <div class="instruction-item"><canvas id="instr-plant" width="80" height="80"></canvas><div class="instruction-text"><strong>Planta Piraña:</strong> ¡MUÉVETE a los lados para esquivarlas! Un borde rojo parpadeante te avisará del peligro.</div></div>
+        <div class="instruction-item"><canvas id="instr-coin" width="80" height="80"></canvas><div class="instruction-text"><strong>Moneda:</strong> ¡TÓCALAS con tus manos para recolectarlas! Aparecen solas o al romper bloques.</div></div>
         <button id="startButton">Iniciar Juego</button>
     </div>
 
@@ -73,7 +61,6 @@
         const retryButton = document.getElementById('retryButton');
         const instructionsOverlay = document.getElementById('instructions');
         const gameOverOverlay = document.getElementById('gameOver');
-        
         const offscreenCanvas = document.createElement('canvas');
         const offscreenCtx = offscreenCanvas.getContext('2d');
 
@@ -91,87 +78,30 @@
         const AVATAR_JUMP_DURATION = 30;
         const ACTION_SCALE_THRESHOLD = 0.95; 
 
-        const CUSTOM_BODY_CONNECTIONS = [
-            [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-            [11, 23], [12, 24], [23, 24],
-            [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
-            [24, 26], [26, 28], [28, 30], [28, 32], [30, 32]
-        ];
-
+        const CUSTOM_BODY_CONNECTIONS = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [27, 29], [27, 31], [29, 31], [24, 26], [26, 28], [28, 30], [28, 32], [30, 32]];
         const groundY = () => gameCanvas.height * 0.60;
 
-        // --- Clases de Objetos ---
-        class GameObject {
-            constructor() { this.active = true; this.isDodgeable = false; this.isCollectible = false; }
-            get currentWidth() { return this.baseWidth * this.scale; }
-            get currentHeight() { return this.baseHeight * this.scale; }
-            get currentX() { return this.x - this.currentWidth / 2; }
-            get currentY() { return this.y - this.currentHeight / 2; }
-            update() {}
-            draw(ctx) {}
-        }
-        class Block extends GameObject {
-             constructor() { super(); this.baseWidth = 60; this.baseHeight = 60; this.scale = 1; this.speedX = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random()); this.x = this.speedX > 0 ? -this.baseWidth : (gameCanvas.width || 1280) + this.baseWidth; this.y = 50 + Math.random() * ((gameCanvas.height || 720) * 0.3); } update() { this.x += this.speedX; if ((this.speedX > 0 && this.x > gameCanvas.width + this.baseWidth) || (this.speedX < 0 && this.x < -this.baseWidth)) this.active = false; } draw(ctx, staticPos) { const x = staticPos ? staticPos.x : this.x; const y = staticPos ? staticPos.y : this.y; const w = this.baseWidth, h = this.baseHeight; ctx.fillStyle = '#D95E00'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = 'black'; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h); ctx.fillStyle = 'white'; ctx.font = `bold 30px "Press Start 2P"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x + w / 2, y + h / 2 + 3); }
-        }
-        class Coin extends GameObject {
-            constructor(x, y) { super(); this.baseWidth = 40; this.baseHeight = 40; this.scale = 1; this.x = x; this.y = y; this.isCollectible = true; this.life = 200; this.speedY = -3; } update() { this.life--; if (this.life <= 0) this.active = false; if (this.speedY < 4) this.speedY += 0.2; this.y += this.speedY; } draw(ctx, staticPos) { const x = staticPos ? staticPos.x : this.x; const y = staticPos ? staticPos.y : this.y; const w = this.baseWidth; ctx.fillStyle = '#FFD700'; ctx.strokeStyle = '#E59400'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, w / 2, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#FFF200'; ctx.font = `bold ${w*0.6}px "Press Start 2P"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', x, y + 2); }
-        }
-        class Goomba extends GameObject {
-            constructor() { super(); this.baseWidth = 80; this.baseHeight = 80; this.scale = 0.1; this.speed = 0.004 + Math.random() * 0.004; this.horizonY = (gameCanvas.height || 720) / 2.2; this.x = Math.random() * (gameCanvas.width || 1280); this.y = this.horizonY; } update() { this.scale += this.speed; this.y = this.horizonY + (this.scale * 150); if (this.y > gameCanvas.height + this.currentHeight) this.active = false; } draw(ctx) { if (gameCanvas && gameCanvas.height > 0 && this.currentY < groundY() - this.currentHeight / 2) return; const isInActionZone = this.scale > ACTION_SCALE_THRESHOLD; if (isInActionZone && blinkCounter > 10) ctx.globalAlpha = 0.5; const x = this.currentX, y = this.currentY, w = this.currentWidth, h = this.currentHeight; ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill(); ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1); ctx.globalAlpha = 1.0; }
-        }
-        class PiranhaPlant extends Goomba {
-             constructor() { super(); this.isDodgeable = true; this.baseWidth = 100; this.baseHeight = 120; this.speed = 0.006 + Math.random() * 0.003; } draw(ctx) { if (gameCanvas && gameCanvas.height > 0 && this.currentY < groundY() - this.currentHeight / 2) return; const x = this.currentX, y = this.currentY, w = this.currentWidth, h = this.currentHeight; ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5); ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill(); const isInActionZone = this.scale > ACTION_SCALE_THRESHOLD; if (isInActionZone && blinkCounter > 10) { ctx.strokeStyle = 'red'; ctx.lineWidth = 10; ctx.strokeRect(x, y, w, h); } }
-        }
+        // --- Clases de Objetos (sin cambios) ---
+        class GameObject { constructor() { this.active = true; this.isDodgeable = false; this.isCollectible = false; } get currentWidth() { return this.baseWidth * this.scale; } get currentHeight() { return this.baseHeight * this.scale; } get currentX() { return this.x - this.currentWidth / 2; } get currentY() { return this.y - this.currentHeight / 2; } update() {} draw(ctx) {} }
+        class Block extends GameObject { constructor() { super(); this.baseWidth = 60; this.baseHeight = 60; this.scale = 1; this.speedX = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random()); this.x = this.speedX > 0 ? -this.baseWidth : (gameCanvas.width || 1280) + this.baseWidth; this.y = 50 + Math.random() * ((gameCanvas.height || 720) * 0.3); } update() { this.x += this.speedX; if ((this.speedX > 0 && this.x > gameCanvas.width + this.baseWidth) || (this.speedX < 0 && this.x < -this.baseWidth)) this.active = false; } draw(ctx, staticPos) { const x = staticPos ? staticPos.x : this.x; const y = staticPos ? staticPos.y : this.y; const w = this.baseWidth, h = this.baseHeight; ctx.fillStyle = '#D95E00'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = 'black'; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h); ctx.fillStyle = 'white'; ctx.font = `bold 30px "Press Start 2P"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x + w / 2, y + h / 2 + 3); } }
+        class Coin extends GameObject { constructor(x, y) { super(); this.baseWidth = 40; this.baseHeight = 40; this.scale = 1; this.x = x; this.y = y; this.isCollectible = true; this.life = 200; this.speedY = -3; } update() { this.life--; if (this.life <= 0) this.active = false; if (this.speedY < 4) this.speedY += 0.2; this.y += this.speedY; } draw(ctx, staticPos) { const x = staticPos ? staticPos.x : this.x; const y = staticPos ? staticPos.y : this.y; const w = this.baseWidth; ctx.fillStyle = '#FFD700'; ctx.strokeStyle = '#E59400'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, w / 2, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#FFF200'; ctx.font = `bold ${w*0.6}px "Press Start 2P"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', x, y + 2); } }
+        class Goomba extends GameObject { constructor() { super(); this.baseWidth = 80; this.baseHeight = 80; this.scale = 0.1; this.speed = 0.004 + Math.random() * 0.004; this.horizonY = (gameCanvas.height || 720) / 2.2; this.x = Math.random() * (gameCanvas.width || 1280); this.y = this.horizonY; } update() { this.scale += this.speed; this.y = this.horizonY + (this.scale * 150); if (this.y > gameCanvas.height + this.currentHeight) this.active = false; } draw(ctx) { if (gameCanvas && gameCanvas.height > 0 && this.currentY < groundY() - this.currentHeight / 2) return; const isInActionZone = this.scale > ACTION_SCALE_THRESHOLD; if (isInActionZone && blinkCounter > 10) ctx.globalAlpha = 0.5; const x = this.currentX, y = this.currentY, w = this.currentWidth, h = this.currentHeight; ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill(); ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1); ctx.globalAlpha = 1.0; } }
+        class PiranhaPlant extends Goomba { constructor() { super(); this.isDodgeable = true; this.baseWidth = 100; this.baseHeight = 120; this.speed = 0.006 + Math.random() * 0.003; } draw(ctx) { if (gameCanvas && gameCanvas.height > 0 && this.currentY < groundY() - this.currentHeight / 2) return; const x = this.currentX, y = this.currentY, w = this.currentWidth, h = this.currentHeight; ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5); ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill(); const isInActionZone = this.scale > ACTION_SCALE_THRESHOLD; if (isInActionZone && blinkCounter > 10) { ctx.strokeStyle = 'red'; ctx.lineWidth = 10; ctx.strokeRect(x, y, w, h); } } }
         class Particle { constructor(x, y, color = 'rgb(238, 188, 103)') { this.x = x; this.y = y; this.size = Math.random() * 10 + 5; this.speedX = Math.random() * 6 - 3; this.speedY = Math.random() * 6 - 3; this.color = color; this.life = 100; } update() { this.x += this.speedX; this.y += this.speedY; this.life -= 2.5; } draw(ctx) { ctx.globalAlpha = Math.max(0, this.life / 100); ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, this.size, this.size); ctx.globalAlpha = 1.0; } }
-        
-        class PlayerTracker {
-            constructor() { this.landmarks = null; this.leftHand = { lastY: 0, velocity: 0 }; this.rightHand = { lastY: 0, velocity: 0 }; this.avgAnkleY = 0; this.lastAvgAnkleY = 0; this.ankleVelocity = 0; this.jumpTimer = 0; }
-            update(landmarks) { if (!landmarks) return; this.landmarks = landmarks; const leftWrist = landmarks[15], rightWrist = landmarks[16], leftAnkle = landmarks[27], rightAnkle = landmarks[28]; this.leftHand.velocity = leftWrist.y - this.leftHand.lastY; this.rightHand.velocity = rightWrist.y - this.rightHand.lastY; this.leftHand.lastY = leftWrist.y; this.rightHand.lastY = rightWrist.y; this.avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2; this.ankleVelocity = this.avgAnkleY - this.lastAvgAnkleY; this.lastAvgAnkleY = this.avgAnkleY; if (this.isJumping()) this.jump(); if (this.jumpTimer > 0) this.jumpTimer--; }
-            isJumping() { return this.ankleVelocity < -JUMP_VELOCITY_THRESHOLD; }
-            isFalling() { return this.jumpTimer > 0 && this.jumpTimer < AVATAR_JUMP_DURATION / 2; }
-            jump() { if (this.jumpTimer === 0) this.jumpTimer = AVATAR_JUMP_DURATION; }
-            isPunching() { return this.leftHand.velocity < -PUNCH_VELOCITY_THRESHOLD || this.rightHand.velocity < -PUNCH_VELOCITY_THRESHOLD; }
-            getPunchingHand() { if (this.leftHand.velocity < -PUNCH_VELOCITY_THRESHOLD) return this.landmarks[15]; if (this.rightHand.velocity < -PUNCH_VELOCITY_THRESHOLD) return this.landmarks[16]; return null; }
-            drawAvatar() {
-                if (!this.landmarks) return;
-                let jumpOffset = 0;
-                if (this.jumpTimer > 0) { const progress = (AVATAR_JUMP_DURATION - this.jumpTimer) / AVATAR_JUMP_DURATION; jumpOffset = Math.sin(progress * Math.PI) * AVATAR_JUMP_HEIGHT; }
-                const translatedLandmarks = JSON.parse(JSON.stringify(this.landmarks));
-                translatedLandmarks.forEach(lm => { lm.y -= (jumpOffset / gameCanvas.height); });
-                drawConnectors(gameCtx, translatedLandmarks, CUSTOM_BODY_CONNECTIONS, { color: 'rgba(255, 255, 255, 0.8)', lineWidth: 8 });
-                drawLandmarks(gameCtx, translatedLandmarks, { color: (data) => data.index > 10 ? 'rgba(255, 255, 255, 0.8)' : 'transparent', radius: 4 });
-                
-                const leftHandIndices = [15, 17, 19];
-                const rightHandIndices = [16, 18, 20];
-                gameCtx.fillStyle = 'white';
-                [...leftHandIndices, ...rightHandIndices].forEach(index => {
-                    const lm = translatedLandmarks[index];
-                    if (lm) {
-                        gameCtx.beginPath();
-                        gameCtx.arc(lm.x * gameCanvas.width, lm.y * gameCanvas.height, 15, 0, 2 * Math.PI);
-                        gameCtx.fill();
-                    }
-                });
-            }
-            collidesWithDodge(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11]; const rightShoulder = this.landmarks[12]; if(!leftShoulder || !rightShoulder) return false; const playerLeft = Math.min(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const playerRight = Math.max(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const objLeft = obj.currentX; const objRight = obj.currentX + obj.currentWidth; return playerRight > objLeft && playerLeft < objRight; }
-        }
+        class PlayerTracker { constructor() { this.landmarks = null; this.leftHand = { lastY: 0, velocity: 0 }; this.rightHand = { lastY: 0, velocity: 0 }; this.avgAnkleY = 0; this.lastAvgAnkleY = 0; this.ankleVelocity = 0; this.jumpTimer = 0; } update(landmarks) { if (!landmarks) return; this.landmarks = landmarks; const leftWrist = landmarks[15], rightWrist = landmarks[16], leftAnkle = landmarks[27], rightAnkle = landmarks[28]; this.leftHand.velocity = leftWrist.y - this.leftHand.lastY; this.rightHand.velocity = rightWrist.y - this.rightHand.lastY; this.leftHand.lastY = leftWrist.y; this.rightHand.lastY = rightWrist.y; this.avgAnkleY = (leftAnkle.y + rightAnkle.y) / 2; this.ankleVelocity = this.avgAnkleY - this.lastAvgAnkleY; this.lastAvgAnkleY = this.avgAnkleY; if (this.isJumping()) this.jump(); if (this.jumpTimer > 0) this.jumpTimer--; } isJumping() { return this.ankleVelocity < -JUMP_VELOCITY_THRESHOLD; } isFalling() { return this.jumpTimer > 0 && this.jumpTimer < AVATAR_JUMP_DURATION / 2; } jump() { if (this.jumpTimer === 0) this.jumpTimer = AVATAR_JUMP_DURATION; } isPunching() { return this.leftHand.velocity < -PUNCH_VELOCITY_THRESHOLD || this.rightHand.velocity < -PUNCH_VELOCITY_THRESHOLD; } getPunchingHand() { if (this.leftHand.velocity < -PUNCH_VELOCITY_THRESHOLD) return this.landmarks[15]; if (this.rightHand.velocity < -PUNCH_VELOCITY_THRESHOLD) return this.landmarks[16]; return null; } drawAvatar() { if (!this.landmarks) return; let jumpOffset = 0; if (this.jumpTimer > 0) { const progress = (AVATAR_JUMP_DURATION - this.jumpTimer) / AVATAR_JUMP_DURATION; jumpOffset = Math.sin(progress * Math.PI) * AVATAR_JUMP_HEIGHT; } const translatedLandmarks = JSON.parse(JSON.stringify(this.landmarks)); translatedLandmarks.forEach(lm => { lm.y -= (jumpOffset / gameCanvas.height); }); drawConnectors(gameCtx, translatedLandmarks, CUSTOM_BODY_CONNECTIONS, { color: 'rgba(255, 255, 255, 0.8)', lineWidth: 8 }); drawLandmarks(gameCtx, translatedLandmarks, { color: (data) => data.index > 10 ? 'rgba(255, 255, 255, 0.8)' : 'transparent', radius: 4 }); const leftHandIndices = [15, 17, 19]; const rightHandIndices = [16, 18, 20]; gameCtx.fillStyle = 'white'; [...leftHandIndices, ...rightHandIndices].forEach(index => { const lm = translatedLandmarks[index]; if (lm) { gameCtx.beginPath(); gameCtx.arc(lm.x * gameCanvas.width, lm.y * gameCanvas.height, 15, 0, 2 * Math.PI); gameCtx.fill(); } }); } collidesWithDodge(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11]; const rightShoulder = this.landmarks[12]; if(!leftShoulder || !rightShoulder) return false; const playerLeft = Math.min(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const playerRight = Math.max(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const objLeft = obj.currentX; const objRight = obj.currentX + obj.currentWidth; return playerRight > objLeft && playerLeft < objRight; } }
 
         function gameLoop() {
             if (gameOver) return;
             gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
             drawBackground();
-            
-            // --- CORRECCIÓN DE DIBUJO DE VIDEO ---
             if (segmentationMask) {
                 offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.drawImage(segmentationMask, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.globalCompositeOperation = 'source-in';
                 offscreenCtx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.globalCompositeOperation = 'source-over';
-                // Dibuja el resultado en el canvas del juego, cubriendo el área
                 gameCtx.drawImage(offscreenCanvas, 0, 0, gameCanvas.width, gameCanvas.height);
             }
-
             blinkCounter = (blinkCounter + 1) % 20;
             if (!gameOver) {
                 objectSpawnTimer++;
@@ -186,30 +116,20 @@
             }
             gameObjects.sort((a,b) => (a.y + (a.currentHeight || 0)) - (b.y + (b.currentHeight || 0)));
             gameObjects.forEach(obj => { obj.update(); obj.draw(gameCtx); });
-            particles.forEach((p, index) => {
-                p.update(); p.draw(gameCtx);
-                if (p.life <= 0) particles.splice(index, 1);
-            });
+            particles.forEach((p, index) => { p.update(); p.draw(gameCtx); if (p.life <= 0) particles.splice(index, 1); });
             if (playerTracker) {
                 playerTracker.drawAvatar();
                 gameObjects.forEach(obj => {
                     if (obj.active) {
-                        if (obj.isDodgeable && obj.scale > ACTION_SCALE_THRESHOLD) {
-                            if (playerTracker.collidesWithDodge(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); }
-                        } else if (obj.isCollectible) {
-                            if (isHandCollidingWithCoin(playerTracker, obj)) { obj.active = false; coins++; }
-                        } else if (obj instanceof Goomba) {
-                            if (isStomping(playerTracker, obj)) { createExplosion(obj.currentX + obj.currentWidth/2, obj.currentY + obj.currentHeight/2, 'brown'); obj.active = false; score++; }
-                        } else if (obj instanceof Block) {
+                        if (obj.isDodgeable && obj.scale > ACTION_SCALE_THRESHOLD) { if (playerTracker.collidesWithDodge(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); } }
+                        else if (obj.isCollectible) { if (isHandCollidingWithCoin(playerTracker, obj)) { obj.active = false; coins++; } }
+                        else if (obj instanceof Goomba) { if (isStomping(playerTracker, obj)) { createExplosion(obj.currentX + obj.currentWidth/2, obj.currentY + obj.currentHeight/2, 'brown'); obj.active = false; score++; } }
+                        else if (obj instanceof Block) {
                             const punchingHand = playerTracker.getPunchingHand();
                             if (punchingHand && isPointInsideRect(punchingHand, obj)) {
                                 createExplosion(obj.x + obj.baseWidth / 2, obj.y + obj.baseHeight / 2, '#D95E00');
                                 obj.active = false; score++;
-                                if (Math.random() < 0.5) { 
-                                    for(let i = 0; i < Math.ceil(Math.random() * 3); i++) {
-                                        gameObjects.push(new Coin(obj.x, obj.y));
-                                    }
-                                }
+                                if (Math.random() < 0.5) { for(let i = 0; i < Math.ceil(Math.random() * 3); i++) { gameObjects.push(new Coin(obj.x, obj.y)); } }
                             }
                         }
                     }
@@ -225,134 +145,104 @@
             if (playerTracker) playerTracker.update(results.poseLandmarks);
         }
         
-        function startGame() {
-            score = 0; lives = 3; coins = 0; gameObjects = []; particles = []; gameOver = false;
-            playerTracker = new PlayerTracker();
-            instructionsOverlay.style.display = 'none';
-            gameOverOverlay.style.display = 'none';
-            if (!poseInitialized) {
-                loadingElement.style.display = 'block';
-                pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-                pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, enableSegmentation: true, smoothSegmentation: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-                pose.onResults(onResults);
-                startCamera();
-                poseInitialized = true;
-            } else {
-                 if (gameOver) return;
-                 gameLoop();
-            }
-        }
-
         async function sendToPose() {
-            if (videoElement.readyState >= 3 && !videoElement.paused) {
+            if (videoElement.readyState >= 3 && !videoElement.paused && !gameOver) {
                 await pose.send({ image: videoElement });
             }
             requestAnimationFrame(sendToPose);
         }
-        
-        function drawInstructionFigures() {
-            const blockCtx = document.getElementById('instr-block').getContext('2d');
-            new Block().draw(blockCtx, {x:10, y:10});
-            const coinCtx = document.getElementById('instr-coin').getContext('2d');
-            new Coin().draw(coinCtx, {x:20, y:20});
-            function drawStaticGoomba(ctx) {
-                const w = 64, h = 64, x = 8, y = 8;
-                ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill();
-                ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill();
-                ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2);
-                ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1);
+
+        // --- LÓGICA DE INICIO REESTRUCTURADA Y MÁS ROBUSTA ---
+
+        function startGame() {
+            // Reiniciar estado del juego
+            score = 0; lives = 3; coins = 0; gameObjects = []; particles = []; gameOver = false;
+            playerTracker = new PlayerTracker();
+            instructionsOverlay.style.display = 'none';
+            gameOverOverlay.style.display = 'none';
+
+            // Si es la primera vez, inicializa todo. Si no, solo reinicia el juego.
+            if (!poseInitialized) {
+                initializePoseAndCamera();
+            } else {
+                videoElement.play(); // Asegurarse de que el video corra en reintentos
+                gameLoop(); // Reiniciar el bucle del juego
+                sendToPose(); // Reiniciar el bucle de pose
             }
-            function drawStaticPlant(ctx) {
-                const w = 70, h = 84, x = 5, y = -2;
-                ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5);
-                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill();
-            }
-            drawStaticGoomba(document.getElementById('instr-goomba').getContext('2d'));
-            drawStaticPlant(document.getElementById('instr-plant').getContext('2d'));
         }
-        window.onload = drawInstructionFigures;
-        
-        startButton.addEventListener('click', startGame);
-        retryButton.addEventListener('click', startGame);
-        window.addEventListener('resize', resizeCanvases);
-        
-        async function startCamera() {
+
+        async function initializePoseAndCamera() {
             loadingElement.style.display = 'block';
+
+            // Inicializar MediaPipe Pose
+            pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, enableSegmentation: true, smoothSegmentation: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+            pose.onResults(onResults);
+            poseInitialized = true;
+
+            // Detener streams anteriores si existen
             if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); }
+
             const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } };
             try {
                 activeStream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoElement.srcObject = activeStream;
-                videoElement.onloadedmetadata = () => {
-                    videoElement.play();
+
+                // **LA CORRECCIÓN CLAVE**: Usar el evento 'onplaying'.
+                // Esto solo se dispara cuando el video REALMENTE ha comenzado a reproducirse.
+                videoElement.onplaying = () => {
                     loadingElement.style.display = 'none';
-                    resizeCanvases(); // Llama a la función de redimensionado una vez que el video está listo
-                    sendToPose(); 
-                    gameLoop();
+                    resizeCanvases(); // Ajustar tamaño ahora que tenemos dimensiones reales
+                    sendToPose();     // Empezar a procesar la imagen
+                    gameLoop();       // Empezar a dibujar el juego
                 };
-            } catch (err) { console.error("Error al iniciar la cámara:", err); }
+
+                // Forzamos el play, que es requerido por el navegador en móviles.
+                videoElement.play();
+
+            } catch (err) {
+                console.error("Error al iniciar la cámara:", err);
+                loadingElement.innerText = "Error al iniciar la cámara. Revisa los permisos.";
+            }
         }
+
+        function drawInstructionFigures() {
+            const blockCtx = document.getElementById('instr-block').getContext('2d'); new Block().draw(blockCtx, {x:10, y:10});
+            const coinCtx = document.getElementById('instr-coin').getContext('2d'); new Coin().draw(coinCtx, {x:20, y:20});
+            function drawStaticGoomba(ctx) { const w = 64, h = 64, x = 8, y = 8; ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill(); ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1); }
+            function drawStaticPlant(ctx) { const w = 70, h = 84, x = 5, y = -2; ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5); ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill(); }
+            drawStaticGoomba(document.getElementById('instr-goomba').getContext('2d'));
+            drawStaticPlant(document.getElementById('instr-plant').getContext('2d'));
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startGame);
+        retryButton.addEventListener('click', startGame);
+        window.addEventListener('resize', resizeCanvases);
+        window.onload = drawInstructionFigures;
 
         function drawBackground() {
-            gameCtx.fillStyle = '#5C94FC';
-            gameCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-            gameCtx.fillStyle = '#008000';
-            gameCtx.fillRect(0, groundY(), gameCanvas.width, gameCanvas.height - groundY());
+            gameCtx.fillStyle = '#5C94FC'; gameCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            gameCtx.fillStyle = '#008000'; gameCtx.fillRect(0, groundY(), gameCanvas.width, gameCanvas.height - groundY());
         }
 
-        // --- NUEVA Y MEJORADA FUNCIÓN de redimensionado ---
         function resizeCanvases() {
-            const videoWidth = videoElement.videoWidth;
-            const videoHeight = videoElement.videoHeight;
+            const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight;
             if (!videoWidth) return;
-
             const container = document.getElementById('container');
-            const containerWidth = container.clientWidth;
-            const containerHeight = container.clientHeight;
-
-            // Forzar una relación de aspecto de 16:9 para el juego
+            const containerWidth = container.clientWidth; const containerHeight = container.clientHeight;
             const gameAspectRatio = 16 / 9;
             let newCanvasWidth, newCanvasHeight;
-
-            if (containerWidth / containerHeight > gameAspectRatio) {
-                // El contenedor es más ancho que el juego (ej. PC)
-                newCanvasHeight = containerHeight;
-                newCanvasWidth = newCanvasHeight * gameAspectRatio;
-            } else {
-                // El contenedor es más alto que el juego (ej. celular vertical)
-                newCanvasWidth = containerWidth;
-                newCanvasHeight = newCanvasWidth / gameAspectRatio;
-            }
-
-            // Aplicar el nuevo tamaño al canvas del juego
-            gameCanvas.width = newCanvasWidth;
-            gameCanvas.height = newCanvasHeight;
-            gameCanvas.style.width = newCanvasWidth + 'px';
-            gameCanvas.style.height = newCanvasHeight + 'px';
-            
-            // El canvas 'offscreen' debe coincidir con las dimensiones REALES del video
-            offscreenCanvas.width = videoWidth;
-            offscreenCanvas.height = videoHeight;
-
+            if (containerWidth / containerHeight > gameAspectRatio) { newCanvasHeight = containerHeight; newCanvasWidth = newCanvasHeight * gameAspectRatio; }
+            else { newCanvasWidth = containerWidth; newCanvasHeight = newCanvasWidth / gameAspectRatio; }
+            gameCanvas.width = newCanvasWidth; gameCanvas.height = newCanvasHeight;
+            gameCanvas.style.width = newCanvasWidth + 'px'; gameCanvas.style.height = newCanvasHeight + 'px';
+            offscreenCanvas.width = videoWidth; offscreenCanvas.height = videoHeight;
             drawBackground();
         }
         
-        function isHandCollidingWithCoin(player, coin) {
-            if (!player.landmarks) return false;
-            const coinCenterX = coin.x; const coinCenterY = coin.y; const coinRadiusSq = (coin.baseWidth / 2) ** 2;
-            const handIndices = [15, 16, 17, 18, 19, 20]; 
-            for (const index of handIndices) {
-                const lm = player.landmarks[index];
-                if (lm) {
-                    const pointX = lm.x * gameCanvas.width; const pointY = lm.y * gameCanvas.height;
-                    const distSq = (pointX - coinCenterX) ** 2 + (pointY - coinCenterY) ** 2;
-                    if (distSq < coinRadiusSq) return true;
-                }
-            }
-            return false;
-        }
-
+        // --- Funciones de Utilidad (sin cambios) ---
+        function isHandCollidingWithCoin(player, coin) { if (!player.landmarks) return false; const coinCenterX = coin.x; const coinCenterY = coin.y; const coinRadiusSq = (coin.baseWidth / 2) ** 2; const handIndices = [15, 16, 17, 18, 19, 20]; for (const index of handIndices) { const lm = player.landmarks[index]; if (lm) { const pointX = lm.x * gameCanvas.width; const pointY = lm.y * gameCanvas.height; const distSq = (pointX - coinCenterX) ** 2 + (pointY - coinCenterY) ** 2; if (distSq < coinRadiusSq) return true; } } return false; }
         function isStomping(player, obj) { if (!player.landmarks || !player.isFalling() || obj.scale < ACTION_SCALE_THRESHOLD) return false; const leftAnkle = player.landmarks[27]; const rightAnkle = player.landmarks[28]; let jumpOffset = 0; if (player.jumpTimer > 0) { const progress = (AVATAR_JUMP_DURATION - player.jumpTimer) / AVATAR_JUMP_DURATION; jumpOffset = Math.sin(progress * Math.PI) * AVATAR_JUMP_HEIGHT; } const avgAnkleX = ((leftAnkle.x + rightAnkle.x) / 2) * gameCanvas.width; const avgAnkleY = ((leftAnkle.y + rightAnkle.y) / 2) * gameCanvas.height - jumpOffset; const horizontalMatch = avgAnkleX > obj.currentX && avgAnkleX < obj.currentX + obj.currentWidth; const verticalMatch = Math.abs(avgAnkleY - obj.currentY) < 40; return horizontalMatch && verticalMatch; }
         function createExplosion(x, y, color) { for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color)); }
         function triggerGameOver() { gameOver = true; gameOverOverlay.style.display = 'flex'; document.getElementById('finalScore').innerText = `Puntuación: ${score} | Monedas: ${coins}`; }
