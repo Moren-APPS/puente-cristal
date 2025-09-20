@@ -2,14 +2,21 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Aventura de Inmersión Total (Versión Final)</title>
+    <title>Aventura Definitiva (Versión Final)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; font-family: 'Press Start 2P', sans-serif; background-color: #222; overflow: hidden; }
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         video { display: none; }
-        canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleX(-1); max-width: 100%; max-height: 100%; border-radius: 10px; }
+        /* Canvas se ajustará por JS, solo mantenemos lo esencial */
+        canvas {
+            position: absolute;
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 10px;
+            transform: scaleX(-1); /* Mantenemos el efecto espejo */
+        }
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.85); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 10; padding: 20px; box-sizing: border-box; }
         h1 { font-size: 2em; margin-bottom: 20px; text-shadow: 3px 3px #000; color: #fbd000; }
         p { max-width: 80%; line-height: 1.5; font-size: 1.2em; }
@@ -19,44 +26,11 @@
         .instruction-item { display: flex; align-items: center; margin-bottom: 20px; }
         .instruction-item canvas { position: static; transform: none; width: 80px; height: 80px; margin-right: 20px; background: #5c94fca2; border-radius: 5px; }
         .instruction-text { font-size: 1em; text-align: left; }
-
-        /* --- NUEVO: Estilos para la pantalla de rotación --- */
-        #rotate-overlay {
-            display: none; /* Oculto por defecto */
-            z-index: 200; /* Por encima de todo */
-        }
-        #rotate-overlay p {
-            font-size: 1.5em;
-            margin-top: 20px;
-        }
-        #rotate-icon {
-            font-size: 5em;
-            animation: spin 2s linear infinite;
-        }
-        @keyframes spin {
-            100% { transform: rotate(90deg); }
-        }
-
-        /* Media Query para detectar la pantalla en vertical */
-        @media (orientation: portrait) {
-            #rotate-overlay {
-                display: flex; /* Se muestra cuando la pantalla está en vertical */
-            }
-            #instructions, #container, #gameOver {
-                display: none; /* Oculta el resto cuando está en vertical */
-            }
-        }
-
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 </head>
 <body>
-    <div id="rotate-overlay" class="overlay">
-        <div id="rotate-icon">🔄</div>
-        <p>Por favor, gira tu dispositivo</p>
-    </div>
-
     <div id="instructions" class="overlay">
         <h1>¡Cómo Jugar!</h1>
         <div class="instruction-item">
@@ -166,23 +140,38 @@
                 translatedLandmarks.forEach(lm => { lm.y -= (jumpOffset / gameCanvas.height); });
                 drawConnectors(gameCtx, translatedLandmarks, CUSTOM_BODY_CONNECTIONS, { color: 'rgba(255, 255, 255, 0.8)', lineWidth: 8 });
                 drawLandmarks(gameCtx, translatedLandmarks, { color: (data) => data.index > 10 ? 'rgba(255, 255, 255, 0.8)' : 'transparent', radius: 4 });
+                
+                const leftHandIndices = [15, 17, 19];
+                const rightHandIndices = [16, 18, 20];
+                gameCtx.fillStyle = 'white';
+                [...leftHandIndices, ...rightHandIndices].forEach(index => {
+                    const lm = translatedLandmarks[index];
+                    if (lm) {
+                        gameCtx.beginPath();
+                        gameCtx.arc(lm.x * gameCanvas.width, lm.y * gameCanvas.height, 15, 0, 2 * Math.PI);
+                        gameCtx.fill();
+                    }
+                });
             }
-            collidesWith(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11].x * gameCanvas.width; const rightShoulder = this.landmarks[12].x * gameCanvas.width; const playerLeft = Math.min(leftShoulder, rightShoulder); const playerRight = Math.max(leftShoulder, rightShoulder); const objLeft = obj.isCollectible ? obj.x - obj.baseWidth/2 : obj.currentX; const objRight = obj.isCollectible ? obj.x + obj.baseWidth/2 : obj.currentX + obj.currentWidth; const horizontalOverlap = playerRight > objLeft && playerLeft < objRight; return horizontalOverlap; }
+            collidesWithDodge(obj) { if (!this.landmarks) return false; const leftShoulder = this.landmarks[11]; const rightShoulder = this.landmarks[12]; if(!leftShoulder || !rightShoulder) return false; const playerLeft = Math.min(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const playerRight = Math.max(leftShoulder.x, rightShoulder.x) * gameCanvas.width; const objLeft = obj.currentX; const objRight = obj.currentX + obj.currentWidth; return playerRight > objLeft && playerLeft < objRight; }
         }
 
         function gameLoop() {
             if (gameOver) return;
-            requestAnimationFrame(gameLoop);
             gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
             drawBackground();
+            
+            // --- CORRECCIÓN DE DIBUJO DE VIDEO ---
             if (segmentationMask) {
-                offscreenCtx.clearRect(0,0, offscreenCanvas.width, offscreenCanvas.height);
+                offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.drawImage(segmentationMask, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.globalCompositeOperation = 'source-in';
                 offscreenCtx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
                 offscreenCtx.globalCompositeOperation = 'source-over';
+                // Dibuja el resultado en el canvas del juego, cubriendo el área
                 gameCtx.drawImage(offscreenCanvas, 0, 0, gameCanvas.width, gameCanvas.height);
             }
+
             blinkCounter = (blinkCounter + 1) % 20;
             if (!gameOver) {
                 objectSpawnTimer++;
@@ -206,9 +195,9 @@
                 gameObjects.forEach(obj => {
                     if (obj.active) {
                         if (obj.isDodgeable && obj.scale > ACTION_SCALE_THRESHOLD) {
-                            if (playerTracker.collidesWith(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); }
+                            if (playerTracker.collidesWithDodge(obj)) { obj.active = false; lives--; if (lives <= 0) triggerGameOver(); }
                         } else if (obj.isCollectible) {
-                            if (playerTracker.collidesWith(obj)) { obj.active = false; coins++; }
+                            if (isHandCollidingWithCoin(playerTracker, obj)) { obj.active = false; coins++; }
                         } else if (obj instanceof Goomba) {
                             if (isStomping(playerTracker, obj)) { createExplosion(obj.currentX + obj.currentWidth/2, obj.currentY + obj.currentHeight/2, 'brown'); obj.active = false; score++; }
                         } else if (obj instanceof Block) {
@@ -228,6 +217,7 @@
             }
             gameObjects = gameObjects.filter(obj => obj.active);
             drawUI();
+            requestAnimationFrame(gameLoop);
         }
         
         function onResults(results) {
@@ -261,14 +251,25 @@
         }
         
         function drawInstructionFigures() {
-            new Block().draw(document.getElementById('instr-block').getContext('2d'), { x: 10, y: 10 });
-            new Coin().draw(document.getElementById('instr-coin').getContext('2d'), { x: 40, y: 40 });
-            const goombaCtx = document.getElementById('instr-goomba').getContext('2d');
-            const mockGoomba = { scale: 0.8, baseWidth: 80, baseHeight: 80, currentX: 8, currentY: 8, currentWidth: 64, currentHeight: 64 };
-            Goomba.prototype.draw.call(mockGoomba, goombaCtx);
-            const plantCtx = document.getElementById('instr-plant').getContext('2d');
-            const mockPlant = { scale: 0.7, baseWidth: 100, baseHeight: 120, currentX: 5, currentY: 10, currentWidth: 70, currentHeight: 84 };
-            PiranhaPlant.prototype.draw.call(mockPlant, plantCtx);
+            const blockCtx = document.getElementById('instr-block').getContext('2d');
+            new Block().draw(blockCtx, {x:10, y:10});
+            const coinCtx = document.getElementById('instr-coin').getContext('2d');
+            new Coin().draw(coinCtx, {x:20, y:20});
+            function drawStaticGoomba(ctx) {
+                const w = 64, h = 64, x = 8, y = 8;
+                ctx.fillStyle = '#6B2E04'; ctx.beginPath(); ctx.moveTo(x + w * 0.1, y + h); ctx.bezierCurveTo(x, y + h * 0.4, x + w, y + h * 0.4, x + w * 0.9, y + h); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#D95E00'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.5, w / 2, Math.PI, 2 * Math.PI); ctx.fill();
+                ctx.fillStyle = 'white'; ctx.fillRect(x + w * 0.25, y + h * 0.4, w * 0.15, h * 0.2); ctx.fillRect(x + w * 0.6, y + h * 0.4, w * 0.15, h * 0.2);
+                ctx.fillStyle = 'black'; ctx.fillRect(x + w * 0.3, y + h * 0.45, w * 0.05, h * 0.1); ctx.fillRect(x + w * 0.65, y + h * 0.45, w * 0.05, h * 0.1);
+            }
+            function drawStaticPlant(ctx) {
+                const w = 70, h = 84, x = 5, y = -2;
+                ctx.fillStyle = '#00A000'; ctx.fillRect(x + w * 0.4, y + h * 0.5, w * 0.2, h * 0.5);
+                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.25, w * 0.4, 0.2, Math.PI - 0.2, false); ctx.arc(x + w / 2, y + h * 0.28, w * 0.3, Math.PI - 0.2, 0.2, true); ctx.closePath(); ctx.fill();
+            }
+            drawStaticGoomba(document.getElementById('instr-goomba').getContext('2d'));
+            drawStaticPlant(document.getElementById('instr-plant').getContext('2d'));
         }
         window.onload = drawInstructionFigures;
         
@@ -286,7 +287,7 @@
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
                     loadingElement.style.display = 'none';
-                    resizeCanvases();
+                    resizeCanvases(); // Llama a la función de redimensionado una vez que el video está listo
                     sendToPose(); 
                     gameLoop();
                 };
@@ -300,14 +301,58 @@
             gameCtx.fillRect(0, groundY(), gameCanvas.width, gameCanvas.height - groundY());
         }
 
+        // --- NUEVA Y MEJORADA FUNCIÓN de redimensionado ---
         function resizeCanvases() {
-            const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight;
+            const videoWidth = videoElement.videoWidth;
+            const videoHeight = videoElement.videoHeight;
             if (!videoWidth) return;
-            gameCanvas.width = videoWidth; gameCanvas.height = videoHeight;
-            offscreenCanvas.width = videoWidth; offscreenCanvas.height = videoHeight;
+
+            const container = document.getElementById('container');
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Forzar una relación de aspecto de 16:9 para el juego
+            const gameAspectRatio = 16 / 9;
+            let newCanvasWidth, newCanvasHeight;
+
+            if (containerWidth / containerHeight > gameAspectRatio) {
+                // El contenedor es más ancho que el juego (ej. PC)
+                newCanvasHeight = containerHeight;
+                newCanvasWidth = newCanvasHeight * gameAspectRatio;
+            } else {
+                // El contenedor es más alto que el juego (ej. celular vertical)
+                newCanvasWidth = containerWidth;
+                newCanvasHeight = newCanvasWidth / gameAspectRatio;
+            }
+
+            // Aplicar el nuevo tamaño al canvas del juego
+            gameCanvas.width = newCanvasWidth;
+            gameCanvas.height = newCanvasHeight;
+            gameCanvas.style.width = newCanvasWidth + 'px';
+            gameCanvas.style.height = newCanvasHeight + 'px';
+            
+            // El canvas 'offscreen' debe coincidir con las dimensiones REALES del video
+            offscreenCanvas.width = videoWidth;
+            offscreenCanvas.height = videoHeight;
+
             drawBackground();
         }
         
+        function isHandCollidingWithCoin(player, coin) {
+            if (!player.landmarks) return false;
+            const coinCenterX = coin.x; const coinCenterY = coin.y; const coinRadiusSq = (coin.baseWidth / 2) ** 2;
+            const handIndices = [15, 16, 17, 18, 19, 20]; 
+            for (const index of handIndices) {
+                const lm = player.landmarks[index];
+                if (lm) {
+                    const pointX = lm.x * gameCanvas.width; const pointY = lm.y * gameCanvas.height;
+                    const distSq = (pointX - coinCenterX) ** 2 + (pointY - coinCenterY) ** 2;
+                    if (distSq < coinRadiusSq) return true;
+                }
+            }
+            return false;
+        }
+
         function isStomping(player, obj) { if (!player.landmarks || !player.isFalling() || obj.scale < ACTION_SCALE_THRESHOLD) return false; const leftAnkle = player.landmarks[27]; const rightAnkle = player.landmarks[28]; let jumpOffset = 0; if (player.jumpTimer > 0) { const progress = (AVATAR_JUMP_DURATION - player.jumpTimer) / AVATAR_JUMP_DURATION; jumpOffset = Math.sin(progress * Math.PI) * AVATAR_JUMP_HEIGHT; } const avgAnkleX = ((leftAnkle.x + rightAnkle.x) / 2) * gameCanvas.width; const avgAnkleY = ((leftAnkle.y + rightAnkle.y) / 2) * gameCanvas.height - jumpOffset; const horizontalMatch = avgAnkleX > obj.currentX && avgAnkleX < obj.currentX + obj.currentWidth; const verticalMatch = Math.abs(avgAnkleY - obj.currentY) < 40; return horizontalMatch && verticalMatch; }
         function createExplosion(x, y, color) { for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color)); }
         function triggerGameOver() { gameOver = true; gameOverOverlay.style.display = 'flex'; document.getElementById('finalScore').innerText = `Puntuación: ${score} | Monedas: ${coins}`; }
